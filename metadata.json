@@ -1,0 +1,6 @@
+{
+  "name": "Alegra ERP - POS, Restaurante y Contabilidad",
+  "description": "Sistema ERP completo al estilo Alegra.com con facturación, inventario, contabilidad, POS tradicional, modo restaurante interactivo, simulador de POS móvil en React Native y preparativos listos para Supabase y NestJS.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
