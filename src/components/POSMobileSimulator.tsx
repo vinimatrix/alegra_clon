@@ -30,7 +30,7 @@ export default function POSMobileSimulator({ products }: POSMobileSimulatorProps
   const [copiedCode, setCopiedCode] = useState(false);
   const [activeScreen, setActiveScreen] = useState<'catalog' | 'cart' | 'success'>('catalog');
 
-  const mobileProducts = products.filter(p => p.category === 'Platos' || p.category === 'Bebidas' || p.category === 'Alimentos');
+  const mobileProducts = products;
 
   const addProductToMobileCart = (prod: Product) => {
     const existing = mobileCart.find(i => i.product.id === prod.id);

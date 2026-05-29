@@ -111,6 +111,23 @@ export interface Client {
   email: string;
   phone: string;
   address?: string;
+  type?: 'client' | 'supplier';
+}
+
+export interface Expense {
+  id: string;
+  number: string;
+  supplierId: string;
+  supplierName: string;
+  supplierRnc: string;
+  date: string;
+  ncf: string;
+  ncfType: string;
+  subtotal: number;
+  itbis: number;
+  total: number;
+  status: 'pagado' | 'pendiente';
+  category: string;
 }
 
 export interface CashRegister {
@@ -119,4 +136,37 @@ export interface CashRegister {
   status: 'abierta' | 'cerrada';
   initialBalance: number;
   currentBalance: number;
+}
+
+export interface Employee {
+  id: string;
+  name: string;
+  cedula: string;
+  position: string;
+  department: string;
+  salary: number;
+  startDate: string;
+  status: 'activo' | 'inactivo';
+  email?: string;
+  phone?: string;
+}
+
+export interface PayrollDeduction {
+  concept: string;
+  employeeRate: number;   // % that the employee pays
+  employerRate: number;   // % that the employer pays
+  employeeAmount: number;
+  employerAmount: number;
+}
+
+export interface PayrollEntry {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  period: string;            // e.g. '2026-05'
+  grossSalary: number;
+  deductions: PayrollDeduction[];
+  totalDeductions: number;
+  netSalary: number;
+  status: 'pendiente' | 'pagada';
 }

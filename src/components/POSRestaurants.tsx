@@ -581,9 +581,9 @@ export default function POSRestaurants({
                   <h3 className="text-xs font-bold text-alegra-secondary uppercase tracking-wider font-display">Añadir Alimentos a {selectedTable.name}</h3>
                   <span className="text-[10px] text-gray-400">Selecciona para añadir directamente a comanda</span>
                 </div>
-                {/* Food-only shortcuts grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {products.filter(p => p.category === 'Platos' || p.category === 'Bebidas').map(p => (
+                {/* All products grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 overflow-y-auto max-h-64 pr-1">
+                  {products.map(p => (
                     <button
                       key={p.id}
                       onClick={() => handleAddDishToTable(p)}

@@ -273,6 +273,47 @@ export const INITIAL_ORDERS: RestaurantOrder[] = [
   }
 ];
 
+export const INITIAL_EXPENSES: import('../types').Expense[] = [
+  {
+    id: 'exp-001',
+    number: 'G-1001',
+    supplierId: 'c-03',
+    supplierName: 'Sinergia Tecnológica SRL',
+    supplierRnc: '1-31-01234-5',
+    date: '2026-05-02',
+    ncf: 'B0100000001',
+    ncfType: 'B01',
+    subtotal: 10000.00,
+    itbis: 1800.00,
+    total: 11800.00,
+    status: 'pagado',
+    category: 'Mantenimiento'
+  },
+  {
+    id: 'exp-002',
+    number: 'G-1002',
+    supplierId: 'c-04',
+    supplierName: 'María Alejandra Delgado',
+    supplierRnc: '001-1249302-3',
+    date: '2026-05-12',
+    ncf: 'B0100000002',
+    ncfType: 'B01',
+    subtotal: 5000.00,
+    itbis: 900.00,
+    total: 5900.00,
+    status: 'pendiente',
+    category: 'Servicios Profesionales'
+  }
+];
+
+export const INITIAL_EMPLOYEES: import('../types').Employee[] = [
+  { id: 'emp-01', name: 'Carlos Mateo', cedula: '001-0010010-1', position: 'Desarrollador Senior', department: 'Tecnología', salary: 120000.00, startDate: '2023-01-15', status: 'activo', email: 'carlos@alegra.com', phone: '809-555-0001' },
+  { id: 'emp-02', name: 'Laura Gómez', cedula: '001-0010010-2', position: 'Especialista de Ventas', department: 'Comercial', salary: 45000.00, startDate: '2024-03-01', status: 'activo', email: 'laura@alegra.com', phone: '809-555-0002' },
+  { id: 'emp-03', name: 'Rafael Torres', cedula: '001-0010010-3', position: 'Asistente Contable', department: 'Finanzas', salary: 35000.00, startDate: '2024-06-10', status: 'activo', email: 'rafael@alegra.com' }
+];
+
+export const INITIAL_PAYROLLS: import('../types').PayrollEntry[] = [];
+
 export function getLocalStorageState<T>(key: string, defaultValue: T): T {
   try {
     const item = window.localStorage.getItem(key);
