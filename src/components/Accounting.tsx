@@ -14,7 +14,10 @@ import {
   Calendar, 
   HelpCircle,
   TrendingUp,
-  X
+  X,
+  Edit,
+  Trash2,
+  ArrowLeftRight
 } from 'lucide-react';
 import { Account, JournalEntry, JournalEntryLine } from '../types';
 
@@ -22,9 +25,10 @@ interface AccountingProps {
   accounts: Account[];
   journalEntries: JournalEntry[];
   onAddJournalEntry: (entry: JournalEntry) => void;
+  onUpdateAccounts: (accounts: Account[]) => void;
 }
 
-export default function Accounting({ accounts, journalEntries, onAddJournalEntry }: AccountingProps) {
+export default function Accounting({ accounts, journalEntries, onAddJournalEntry, onUpdateAccounts }: AccountingProps) {
   const [activeSubTab, setActiveSubTab] = useState<'catalogo' | 'asientos' | 'pyl'>('catalogo');
   const [showCreateAsiento, setShowCreateAsiento] = useState(false);
   const [entryDesc, setEntryDesc] = useState('');
@@ -33,6 +37,165 @@ export default function Accounting({ accounts, journalEntries, onAddJournalEntry
     { accountCode: '1101', debit: 0, credit: 0 },
     { accountCode: '4101', debit: 0, credit: 0 }
   ]);
+
+  // NEW ACCOUNT MANAGEMENT AND TRANSFER STATES
+  const [showAddAccountModal, setShowAddAccountModal] = useState(false);
+  const [showEditAccountModal, setShowEditAccountModal] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+
+  // Add Account form inputs
+  const [newAccCode, setNewAccCode] = useState('');
+  const [newAccName, setNewAccName] = useState('');
+  const [newAccType, setNewAccType] = useState<'activo' | 'pasivo' | 'patrimonio' | 'ingreso' | 'egreso'>('activo');
+  const [newAccBalance, setNewAccBalance] = useState<number>(0);
+  const [newAccDescription, setNewAccDescription] = useState('');
+
+  // Edit Account form inputs
+  const [editingAccCode, setEditingAccCode] = useState('');
+  const [editingAccName, setEditingAccName] = useState('');
+  const [editingAccType, setEditingAccType] = useState<'activo' | 'pasivo' | 'patrimonio' | 'ingreso' | 'egreso'>('activo');
+  const [editingAccBalance, setEditingAccBalance] = useState<number>(0);
+  const [editingAccDescription, setEditingAccDescription] = useState('');
+
+  // Transfer form inputs
+  const [transferSource, setTransferSource] = useState('');
+  const [transferDest, setTransferDest] = useState('');
+  const [transferAmount, setTransferAmount] = useState<number>(0);
+  const [transferDesc, setTransferDesc] = useState('');
+
+  // Add Account submit handler
+  const handleAddAccountSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAccCode || !newAccName) {
+      alert("Por favor complete los campos obligatorios.");
+      return;
+    }
+    // Check duplication
+    if (accounts.some(a => a.code === newAccCode)) {
+      alert("Error: Ya existe una cuenta registrada con ese código contable.");
+      return;
+    }
+    const newAccount: Account = {
+      code: newAccCode,
+      name: newAccName,
+      type: newAccType,
+      balance: Number(newAccBalance) || 0,
+      description: newAccDescription || undefined
+    };
+    onUpdateAccounts([...accounts, newAccount].sort((a,b) => a.code.localeCompare(b.code)));
+    
+    // Reset inputs
+    setNewAccCode('');
+    setNewAccName('');
+    setNewAccType('activo');
+    setNewAccBalance(0);
+    setNewAccDescription('');
+    setShowAddAccountModal(false);
+  };
+
+  // Open Edit account modal
+  const handleOpenEditAccountModal = (acc: Account) => {
+    setEditingAccCode(acc.code);
+    setEditingAccName(acc.name);
+    setEditingAccType(acc.type);
+    setEditingAccBalance(acc.balance);
+    setEditingAccDescription(acc.description || '');
+    setShowEditAccountModal(true);
+  };
+
+  // Edit Account submit handler
+  const handleEditAccountSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAccName) {
+      alert("Por favor complete los campos obligatorios.");
+      return;
+    }
+    const updated = accounts.map(a => {
+      if (a.code === editingAccCode) {
+        return {
+          ...a,
+          name: editingAccName,
+          type: editingAccType,
+          balance: Number(editingAccBalance) || 0,
+          description: editingAccDescription || undefined
+        };
+      }
+      return a;
+    });
+    onUpdateAccounts(updated);
+    setShowEditAccountModal(false);
+  };
+
+  // Delete account handler
+  const handleDeleteAccount = (code: string) => {
+    const acc = accounts.find(a => a.code === code);
+    if (!acc) return;
+
+    if (acc.balance !== 0) {
+      const confirmDelete = window.confirm(`Atención: La cuenta "${acc.name}" tiene un saldo de RD$ ${acc.balance.toLocaleString('es-DO', { minimumFractionDigits: 2 })}. ¿Desea eliminarla de todos modos?`);
+      if (!confirmDelete) return;
+    } else {
+      const confirmDelete = window.confirm(`¿Está seguro de que desea eliminar la cuenta contable "${acc.name}" [${acc.code}]?`);
+      if (!confirmDelete) return;
+    }
+
+    onUpdateAccounts(accounts.filter(a => a.code !== code));
+  };
+
+  // Transfer submit handler (generates dual line journal entry)
+  const handleTransferSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transferSource || !transferDest) {
+      alert("Debe seleccionar las cuentas de origen y destino.");
+      return;
+    }
+    if (transferSource === transferDest) {
+      alert("La cuenta de origen y de destino no pueden ser la misma.");
+      return;
+    }
+    if (transferAmount <= 0) {
+      alert("El monto del movimiento debe ser mayor a cero.");
+      return;
+    }
+
+    const sourceAcc = accounts.find(a => a.code === transferSource);
+    const destAcc = accounts.find(a => a.code === transferDest);
+    if (!sourceAcc || !destAcc) {
+      alert("Cuenta no válida.");
+      return;
+    }
+
+    // Double entry rules apply
+    const journalLines: JournalEntryLine[] = [
+      {
+        accountCode: transferDest,
+        debit: Number(transferAmount),
+        credit: 0
+      },
+      {
+        accountCode: transferSource,
+        debit: 0,
+        credit: Number(transferAmount)
+      }
+    ];
+
+    const transferEntry: JournalEntry = {
+      id: `as-tr-${Date.now()}`,
+      date: new Date().toISOString().split('T')[0],
+      description: transferDesc || `Transferencia interna de fondos: ${sourceAcc.name} ➔ ${destAcc.name}`,
+      reference: 'MOV-INT',
+      lines: journalLines
+    };
+
+    onAddJournalEntry(transferEntry);
+
+    // Reset inputs
+    setTransferSource('');
+    setTransferDest('');
+    setTransferAmount(0);
+    setTransferDesc('');
+    setShowTransferModal(false);
+  };
 
   // Derived calculations for Profit and Loss (P&L - Estado de Pérdidas y Ganancias)
   const totalIncomeSales = accounts.find(a => a.code === '4101')?.balance || 0;
@@ -165,7 +328,29 @@ export default function Accounting({ accounts, journalEntries, onAddJournalEntry
           <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-xl text-gray-700 flex items-start gap-2.5 text-xs leading-relaxed">
             <Layers size={16} className="text-alegra-primary shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold">Estructura Homologada</span>: El catálogo de cuentas organiza los saldos operacionales en Activos, Pasivos, Patrimonios, Ingresos y Egresos. Cada movimiento en las facturas del POS o cobros de comensales genera movimientos automáticos en estas partidas.
+              <span className="font-bold">Estructura Homologada</span>: El catálogo de cuentas organiza los saldos operacionales en Activos (incluyendo bancos y cajas), Pasivos, Patrimonios, Ingresos y Egresos. Cada movimiento en las facturas del POS o cobros de comensales genera movimientos automáticos en estas partidas.
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-4 rounded-xl border border-gray-100 shadow-xxs gap-3">
+            <div className="text-xs text-gray-500">
+              Administre las cuentas del catálogo u organice transferencias y movimientos directos entre ellas.
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setShowTransferModal(true)}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-bold text-xs px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                id="btn-accounting-transfer"
+              >
+                <ArrowLeftRight size={14} className="text-amber-500 animate-pulse" /> Transferencia / Movimiento
+              </button>
+              <button
+                onClick={() => setShowAddAccountModal(true)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                id="btn-accounting-add-account"
+              >
+                <Plus size={14} /> Nueva Cuenta Contable
+              </button>
             </div>
           </div>
 
@@ -179,6 +364,7 @@ export default function Accounting({ accounts, journalEntries, onAddJournalEntry
                     <th className="py-3 px-4 text-center">Clasificación</th>
                     <th className="py-3 px-4 text-right">Saldo Actual</th>
                     <th className="py-3 px-4">Breve descripción</th>
+                    <th className="py-3 px-4 text-center w-24">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-gray-800 font-sans">
@@ -198,9 +384,28 @@ export default function Accounting({ accounts, journalEntries, onAddJournalEntry
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right font-bold text-gray-950 font-mono">
-                        ${acc.balance.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                        RD$ {acc.balance.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
                       </td>
                       <td className="py-3 px-4 text-gray-400 italic max-w-xs truncate">{acc.description || 'N/A'}</td>
+                      <td className="py-3 px-4 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => handleOpenEditAccountModal(acc)}
+                            className="p-1.5 bg-indigo-55 hover:bg-slate-100 border border-slate-200 text-indigo-650 rounded cursor-pointer transition-colors"
+                            title="Editar Cuenta"
+                          >
+                            <Edit size={12} />
+                          </button>
+                          {/* Protect critical general accounts from basic delete if needed, but let users delete them */}
+                          <button
+                            onClick={() => handleDeleteAccount(acc.code)}
+                            className="p-1.5 bg-red-50 hover:bg-red-100 border border-red-100 text-red-650 rounded cursor-pointer transition-all"
+                            title="Eliminar Cuenta"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -488,6 +693,347 @@ export default function Accounting({ accounts, journalEntries, onAddJournalEntry
                   className="bg-alegra-primary hover:bg-alegra-primary-dark text-white font-bold py-2 px-5 rounded cursor-pointer"
                 >
                   <Check size={14} /> Contabilizar Asiento
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/*******************************************************
+       * MODAL PARA AGREGAR NUEVA CUENTA CONTABLE
+       *******************************************************/
+      showAddAccountModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs text-xs font-sans">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-5 border border-gray-150 flex flex-col space-y-4">
+            
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+              <h3 className="text-sm font-extrabold text-indigo-950 uppercase tracking-widest font-display">
+                Agregar Cuenta Contable
+              </h3>
+              <button 
+                onClick={() => setShowAddAccountModal(false)}
+                className="text-gray-400 hover:text-gray-650 p-1 cursor-pointer transition-all"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddAccountSubmit} className="space-y-4 text-gray-750">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-500 font-bold uppercase tracking-wider text-[9px] mb-1">
+                    Código Cuenta *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej. 1104"
+                    value={newAccCode}
+                    onChange={(e) => setNewAccCode(e.target.value)}
+                    className="w-full bg-slate-50 border border-gray-200 rounded px-2.5 py-1.5 font-mono text-[11px] outline-none font-bold text-gray-800 focus:border-indigo-500"
+                  />
+                  <span className="text-[8px] text-gray-400 block mt-0.5">Ej: 11XX Activo, 21XX Pasivo...</span>
+                </div>
+                
+                <div>
+                  <label className="block text-gray-500 font-bold uppercase tracking-wider text-[9px] mb-1">
+                    Clasificación *
+                  </label>
+                  <select
+                    value={newAccType}
+                    onChange={(e) => setNewAccType(e.target.value as any)}
+                    className="w-full bg-slate-50 border border-gray-200 rounded px-2 py-1.5 text-[11px] font-bold text-gray-800 outline-none"
+                  >
+                    <option value="activo">Activo (Bancos, Cajas, etc)</option>
+                    <option value="pasivo">Pasivo (Deudas, Ajustes)</option>
+                    <option value="patrimonio">Patrimonio (Capital, Reservas)</option>
+                    <option value="ingreso">Ingreso (Ventas, Servicios)</option>
+                    <option value="egreso">Egreso (Costos, Gastos)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-gray-500 font-bold uppercase tracking-wider text-[9px] mb-1">
+                  Denominación / Nombre de Cuenta *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej. Banco BHD León Cuenta Ahorros"
+                  value={newAccName}
+                  onChange={(e) => setNewAccName(e.target.value)}
+                  className="w-full bg-slate-50 border border-gray-200 rounded px-2.5 py-1.5 text-[11px] font-bold text-gray-800 outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-500 font-bold uppercase tracking-wider text-[9px] mb-1">
+                  Saldo de Apertura (RD$)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={newAccBalance || ''}
+                  onChange={(e) => setNewAccBalance(Number(e.target.value) || 0)}
+                  className="w-full bg-slate-50 border border-gray-200 rounded px-2.5 py-1.5 font-mono text-[11px] font-bold text-gray-800 outline-none text-right focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-500 font-bold uppercase tracking-wider text-[9px] mb-1">
+                  Breve descripción
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Escribe el propósito de la cuenta..."
+                  value={newAccDescription}
+                  onChange={(e) => setNewAccDescription(e.target.value)}
+                  className="w-full bg-slate-50 border border-gray-200 rounded px-2.5 py-1.5 text-[11px] text-gray-700 outline-none focus:border-indigo-500 resize-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddAccountModal(false)}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded-lg flex-1 cursor-pointer transition-colors"
+                >
+                  Regresar
+                </button>
+                <button
+                  type="submit"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg flex-1 cursor-pointer transition-all"
+                >
+                  Guardar Cuenta
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/*******************************************************
+       * MODAL PARA EDITAR CUENTA CONTABLE
+       *******************************************************/
+      showEditAccountModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs text-xs font-sans">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-5 border border-gray-150 flex flex-col space-y-4">
+            
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+              <h3 className="text-sm font-extrabold text-indigo-950 uppercase tracking-widest font-display">
+                Editar Cuenta Contable
+              </h3>
+              <button 
+                onClick={() => setShowEditAccountModal(false)}
+                className="text-gray-450 hover:text-gray-650 p-1 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditAccountSubmit} className="space-y-4 text-gray-750">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-500 font-bold uppercase tracking-wider text-[9px] mb-1">
+                    Código Cuenta (No Editable)
+                  </label>
+                  <input
+                    type="text"
+                    disabled
+                    value={editingAccCode}
+                    className="w-full bg-gray-100 border border-gray-150 rounded px-2.5 py-1.5 font-mono text-[11px] font-bold text-gray-400 outline-none cursor-not-allowed"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-gray-500 font-bold uppercase tracking-wider text-[9px] mb-1">
+                    Clasificación *
+                  </label>
+                  <select
+                    value={editingAccType}
+                    onChange={(e) => setEditingAccType(e.target.value as any)}
+                    className="w-full bg-slate-50 border border-gray-200 rounded px-2 py-1.5 text-[11px] font-bold text-gray-800 outline-none"
+                  >
+                    <option value="activo">Activo (Bancos, Cajas, etc)</option>
+                    <option value="pasivo">Pasivo (Deudas, Ajustes)</option>
+                    <option value="patrimonio">Patrimonio (Capital, Reservas)</option>
+                    <option value="ingreso">Ingreso (Ventas, Servicios)</option>
+                    <option value="egreso">Egreso (Costos, Gastos)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-gray-500 font-bold uppercase tracking-wider text-[9px] mb-1">
+                  Denominación / Nombre de Cuenta *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej. Nombre de cuenta"
+                  value={editingAccName}
+                  onChange={(e) => setEditingAccName(e.target.value)}
+                  className="w-full bg-slate-50 border border-gray-200 rounded px-2.5 py-1.5 text-[11px] font-bold text-gray-800 outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-500 font-bold uppercase tracking-wider text-[9px] mb-1">
+                  Saldo Manual (RD$)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={editingAccBalance || ''}
+                  onChange={(e) => setEditingAccBalance(Number(e.target.value) || 0)}
+                  className="w-full bg-slate-50 border border-gray-200 rounded px-2.5 py-1.5 font-mono text-[11px] font-bold text-gray-800 outline-none text-right focus:border-indigo-500"
+                />
+                <span className="text-[8px] text-amber-600 block mt-0.5 font-bold animate-pulse">
+                  ⚠ Modificar el balance puede descuadrar los reportes históricos.
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-gray-500 font-bold uppercase tracking-wider text-[9px] mb-1">
+                  Breve descripción
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Escribe el propósito de la cuenta..."
+                  value={editingAccDescription}
+                  onChange={(e) => setEditingAccDescription(e.target.value)}
+                  className="w-full bg-slate-50 border border-gray-200 rounded px-2.5 py-1.5 text-[11px] text-gray-700 outline-none focus:border-indigo-500 resize-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setShowEditAccountModal(false)}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded-lg flex-1 cursor-pointer transition-colors"
+                >
+                  Regresar
+                </button>
+                <button
+                  type="submit"
+                  className="bg-indigo-650 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg flex-1 cursor-pointer transition-all"
+                >
+                  Actualizar Cuenta
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/*******************************************************
+       * MODAL PARA HACER MOVIMIENTOS / TRANSFERENCIAS
+       *******************************************************/
+      showTransferModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs text-xs font-sans">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-5 border border-gray-150 flex flex-col space-y-4">
+            
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+              <h3 className="text-sm font-extrabold text-amber-950 uppercase tracking-widest font-display flex items-center gap-1.5">
+                <ArrowLeftRight size={16} className="text-amber-500" /> Hacer Movimiento Interno
+              </h3>
+              <button 
+                onClick={() => setShowTransferModal(false)}
+                className="text-gray-400 hover:text-gray-650 p-1 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="text-[10px] text-gray-500 leading-relaxed bg-amber-50/50 p-2.5 rounded border border-amber-100">
+              Esta función automatiza el registro de partida doble para movimientos internos (ej. retirar efectivo de un banco para reposición de Caja Chica). Generará un débito a la cuenta destino y un crédito a la de origen en el Diario.
+            </p>
+
+            <form onSubmit={handleTransferSubmit} className="space-y-4 text-gray-7b0">
+              <div>
+                <label className="block text-gray-500 font-bold uppercase tracking-wider text-[9px] mb-1">
+                  Cuenta de Origen (Egreso / Haber Crédito) *
+                </label>
+                <select
+                  required
+                  value={transferSource}
+                  onChange={(e) => setTransferSource(e.target.value)}
+                  className="w-full bg-slate-50 border border-gray-200 rounded px-2 py-1.5 text-[11px] font-bold text-gray-800 outline-none"
+                >
+                  <option value="">-- Seleccionar cuenta origen --</option>
+                  {accounts.map(acc => (
+                    <option key={acc.code} value={acc.code}>
+                      [{acc.code}] {acc.name} - Bal: RD$ {acc.balance.toLocaleString('es-DO')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-gray-500 font-bold uppercase tracking-wider text-[9px] mb-1">
+                  Cuenta de Destino (Ingreso / Debe Débito) *
+                </label>
+                <select
+                  required
+                  value={transferDest}
+                  onChange={(e) => setTransferDest(e.target.value)}
+                  className="w-full bg-slate-50 border border-gray-200 rounded px-2 py-1.5 text-[11px] font-bold text-gray-800 outline-none"
+                >
+                  <option value="">-- Seleccionar cuenta destino --</option>
+                  {accounts.map(acc => (
+                    <option key={acc.code} value={acc.code}>
+                      [{acc.code}] {acc.name} - Bal: RD$ {acc.balance.toLocaleString('es-DO')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-gray-500 font-bold uppercase tracking-wider text-[9px] mb-1">
+                  Monto a Transferir (RD$) *
+                </label>
+                <input
+                  type="number"
+                  required
+                  step="0.01"
+                  min="0.01"
+                  placeholder="0.00"
+                  value={transferAmount || ''}
+                  onChange={(e) => setTransferAmount(Number(e.target.value) || 0)}
+                  className="w-full bg-slate-50 border border-gray-200 rounded px-2.5 py-1.5 font-mono text-[11px] font-bold text-gray-800 outline-none text-right focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-500 font-bold uppercase tracking-wider text-[9px] mb-1">
+                  Descripción / Concepto del Movimiento
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej. Reposición de fondo fijo de Caja Chica"
+                  value={transferDesc}
+                  onChange={(e) => setTransferDesc(e.target.value)}
+                  className="w-full bg-slate-50 border border-gray-200 rounded px-2.5 py-1.5 text-[11px] text-gray-800 outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setShowTransferModal(false)}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded-lg flex-1 cursor-pointer transition-colors"
+                >
+                  Regresar
+                </button>
+                <button
+                  type="submit"
+                  className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 rounded-lg flex-1 cursor-pointer transition-all"
+                >
+                  Ejecutar Movimiento
                 </button>
               </div>
             </form>

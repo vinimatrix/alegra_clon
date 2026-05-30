@@ -12,13 +12,22 @@
  * 2. LOCAL API  → VITE_USE_SUPABASE=false y VITE_NESTJS_API_URL definido → Llama al backend NestJS.
  * 3. MOCK       → Sin variables definidas → Usa datos del localStorage/mockData.ts (modo offline).
  */
-import { supabase } from './supabaseClient';
+import { supabase, getSupabaseConfig } from './supabaseClient';
 
-export const USE_SUPABASE = import.meta.env.VITE_USE_SUPABASE === 'true';
+export function isSupabaseActive() {
+  const config = getSupabaseConfig();
+  return config.use && config.url !== 'https://placeholder.supabase.co';
+}
+
+export const USE_SUPABASE = isSupabaseActive();
 export const NESTJS_API_URL = import.meta.env.VITE_NESTJS_API_URL || '';
 
 /** Retorna true si hay un backend real configurado (Supabase o NestJS) */
-export const HAS_BACKEND = USE_SUPABASE || (NESTJS_API_URL !== '' && NESTJS_API_URL !== 'http://localhost:3001');
+export function hasBackend() {
+  return isSupabaseActive() || (NESTJS_API_URL !== '' && NESTJS_API_URL !== 'http://localhost:3001');
+}
+
+export const HAS_BACKEND = hasBackend();
 
 export const api = {
   // PRODUCTS
@@ -73,31 +82,72 @@ export const api = {
   createPayroll: async (payroll: any) => fetcher('payrolls', 'POST', payroll),
 };
 
+// Helper recursively mapping snake_case keys to camelCase for React compatibility
+export function toCamelCase(obj: any): any {
+  if (obj === null || obj === undefined) return obj;
+  if (obj instanceof Date) return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(toCamelCase);
+  }
+  if (typeof obj === 'object') {
+    const n: any = {};
+    for (const key of Object.keys(obj)) {
+      const camelKey = key.replace(/([-_][a-z])/g, group =>
+        group.toUpperCase().replace('-', '').replace('_', '')
+      );
+      n[camelKey] = toCamelCase(obj[key]);
+    }
+    return n;
+  }
+  return obj;
+}
+
+// Helper recursively mapping camelCase keys to snake_case for Supabase Postgres compatibility
+export function toSnakeCase(obj: any): any {
+  if (obj === null || obj === undefined) return obj;
+  if (obj instanceof Date) return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(toSnakeCase);
+  }
+  if (typeof obj === 'object') {
+    const n: any = {};
+    for (const key of Object.keys(obj)) {
+      const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+      n[snakeKey] = toSnakeCase(obj[key]);
+    }
+    return n;
+  }
+  return obj;
+}
+
 async function fetcher(endpoint: string, method: string, body?: any): Promise<any> {
   const isPostOrPut = method === 'POST' || method === 'PUT';
   const parts = endpoint.split('/');
   const table = parts[0];
   const idPath = parts[1];
 
-  if (USE_SUPABASE) {
+  if (isSupabaseActive()) {
+    const keyCol = table === 'accounts' ? 'code' : 'id';
+    const dbBody = body ? toSnakeCase(body) : undefined;
+    
     // ── SUPABASE MODE ──────────────────────────────────────────
     if (method === 'GET') {
-      const { data, error } = await supabase.from(table).select('*').order('created_at', { ascending: false });
+      const { data, error } = await supabase.from(table).select('*').order(table === 'accounts' ? 'code' : 'created_at', { ascending: false });
       if (error) throw error;
-      return data ?? [];
+      return toCamelCase(data ?? []);
     }
     if (method === 'POST') {
-      const { data, error } = await supabase.from(table).insert([body]).select();
+      const { data, error } = await supabase.from(table).insert([dbBody]).select();
       if (error) throw error;
-      return data?.[0];
+      return toCamelCase(data?.[0]);
     }
     if (method === 'PUT' && idPath) {
-      const { data, error } = await supabase.from(table).update(body).eq('id', idPath).select();
+      const { data, error } = await supabase.from(table).update(dbBody).eq(keyCol, idPath).select();
       if (error) throw error;
-      return data?.[0];
+      return toCamelCase(data?.[0]);
     }
     if (method === 'DELETE' && idPath) {
-      const { error } = await supabase.from(table).delete().eq('id', idPath);
+      const { error } = await supabase.from(table).delete().eq(keyCol, idPath);
       if (error) throw error;
       return { success: true };
     }

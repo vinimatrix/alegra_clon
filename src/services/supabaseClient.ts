@@ -8,11 +8,28 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// These should be set in .env of the React project
-// VITE_SUPABASE_URL=your_supabase_url
-// VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+// Dynamically fetch configurations from localStorage (overridden in settings) or import.meta.env
+export function getSupabaseConfig() {
+  const localUrl = localStorage.getItem('alegra_supabase_url') || '';
+  const localKey = localStorage.getItem('alegra_supabase_key') || '';
+  const localUse = localStorage.getItem('alegra_supabase_use') === 'true';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder_key';
+  const url = localUrl || import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
+  const key = localKey || import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder_key';
+  
+  // If we have custom local credentials, respect localUse state, otherwise respect .env
+  const use = localUrl && localKey 
+    ? localUse 
+    : (import.meta.env.VITE_USE_SUPABASE === 'true');
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  return { url, key, use };
+}
+
+const initialConfig = getSupabaseConfig();
+export let supabase = createClient(initialConfig.url, initialConfig.key);
+
+// Call this when settings are updated to recreate the client instance
+export function reinitializeSupabase() {
+  const freshConfig = getSupabaseConfig();
+  supabase = createClient(freshConfig.url, freshConfig.key);
+}

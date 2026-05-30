@@ -4,7 +4,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Palette, CheckCircle2, MonitorSmartphone, Settings as SettingsIcon, Database, Wifi, WifiOff } from 'lucide-react';
+import { Palette, CheckCircle2, MonitorSmartphone, Settings as SettingsIcon, Database, Wifi, WifiOff, Save, Key, Globe } from 'lucide-react';
+import { reinitializeSupabase, getSupabaseConfig } from '../services/supabaseClient';
+import { isSupabaseActive } from '../services/api';
 
 const THEMES = [
   { id: 'default', name: 'Alegra Classic', type: 'Azul Original', bg: 'bg-blue-600', text: 'text-blue-900', desc: 'Tema por defecto de la aplicación' },
@@ -16,10 +18,6 @@ const THEMES = [
   { id: 'minimalist', name: 'Minimalist B&W', type: 'Blanco y Negro', bg: 'bg-neutral-800', text: 'text-neutral-900', desc: 'Tiendas de ropa, joyerías, marcas elegantes' }
 ];
 
-const USE_SUPABASE = import.meta.env.VITE_USE_SUPABASE === 'true';
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const NESTJS_URL = import.meta.env.VITE_NESTJS_API_URL || 'http://localhost:3001';
-
 type BackendMode = 'supabase' | 'local' | 'mock';
 
 export default function Settings() {
@@ -27,13 +25,23 @@ export default function Settings() {
     return localStorage.getItem('alegra_theme') || 'default';
   });
 
-  const backendMode: BackendMode = USE_SUPABASE
-    ? 'supabase'
-    : NESTJS_URL !== 'http://localhost:3001' || true
-    ? 'local'
-    : 'mock';
+  const [supabaseUrlInput, setSupabaseUrlInput] = useState(() => {
+    return localStorage.getItem('alegra_supabase_url') || import.meta.env.VITE_SUPABASE_URL || '';
+  });
+  
+  const [supabaseKeyInput, setSupabaseKeyInput] = useState(() => {
+    return localStorage.getItem('alegra_supabase_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  });
+  
+  const [useSupabaseCheckbox, setUseSupabaseCheckbox] = useState(() => {
+    const active = localStorage.getItem('alegra_supabase_use');
+    if (active !== null) return active === 'true';
+    return import.meta.env.VITE_USE_SUPABASE === 'true';
+  });
 
-  const resolvedMode: BackendMode = USE_SUPABASE ? 'supabase' : 'mock';
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const resolvedMode: BackendMode = useSupabaseCheckbox ? 'supabase' : 'mock';
 
   useEffect(() => {
     if (activeTheme === 'default') {
@@ -43,6 +51,22 @@ export default function Settings() {
     }
     localStorage.setItem('alegra_theme', activeTheme);
   }, [activeTheme]);
+
+  const handleSaveConnection = () => {
+    localStorage.setItem('alegra_supabase_url', supabaseUrlInput.trim());
+    localStorage.setItem('alegra_supabase_key', supabaseKeyInput.trim());
+    localStorage.setItem('alegra_supabase_use', useSupabaseCheckbox ? 'true' : 'false');
+    
+    // Refresh client in real-time
+    reinitializeSupabase();
+    
+    setSaveSuccess(true);
+    setTimeout(() => {
+      setSaveSuccess(false);
+      // Force reload to let application fetch freshly from new backend or mock
+      window.location.reload();
+    }, 1000);
+  };
 
   return (
     <div className="space-y-6 animate-fade-in" id="settings-screen">
@@ -105,86 +129,114 @@ export default function Settings() {
       </div>
       
       {/* Backend Connection Status Section */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden" id="backend-connection">
         <div className="p-5 border-b border-gray-100 flex items-center gap-2">
           <Database className="text-alegra-primary" size={20} />
-          <h2 className="text-lg font-bold text-gray-800">Conexión de Backend</h2>
+          <h2 className="text-lg font-bold text-gray-800">Conexión de Base de Datos Supabase</h2>
         </div>
-        <div className="p-5 space-y-4">
-          <p className="text-sm text-gray-600">
-            Controla si la aplicación usa <strong>Supabase</strong>, el <strong>API Local (NestJS)</strong>, o los <strong>datos de muestra</strong> (mock). Configura el archivo <code className="bg-gray-100 px-1 rounded text-xs">.env</code> para activar cada modo.
+        <div className="p-5 space-y-6">
+          <p className="text-sm text-gray-650">
+            Puedes conectar tu propia base de datos de <strong>Supabase</strong> ingresando las credenciales a continuación. Al activar Supabase, toda la data se cargará directamente del servidor en la nube en tiempo real, en lugar de usar datos ficticios de muestra (mock data).
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {/* Supabase Mode */}
+          <div className="space-y-4 max-w-2xl bg-slate-50 p-5 rounded-xl border border-gray-150">
+            <h3 className="font-bold text-xs text-alegra-secondary uppercase tracking-wider mb-2">Formulario de Credenciales</h3>
+            
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                <Globe size={14} className="text-gray-400" />
+                Supabase URL de Proyecto (VITE_SUPABASE_URL)
+              </label>
+              <input
+                type="text"
+                value={supabaseUrlInput}
+                onChange={(e) => setSupabaseUrlInput(e.target.value)}
+                placeholder="https://xyzcompany.supabase.co"
+                className="w-full bg-white border border-gray-200 rounded-lg text-xs px-3.5 py-2.5 outline-none focus:border-alegra-primary text-gray-800"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                <Key size={14} className="text-gray-400" />
+                Supabase Anon/Public Key (VITE_SUPABASE_ANON_KEY)
+              </label>
+              <input
+                type="password"
+                value={supabaseKeyInput}
+                onChange={(e) => setSupabaseKeyInput(e.target.value)}
+                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                className="w-full bg-white border border-gray-200 rounded-lg text-xs px-3.5 py-2.5 outline-none focus:border-alegra-primary text-gray-800"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 pt-2.5">
+              <input
+                id="use-supabase-checkbox"
+                type="checkbox"
+                checked={useSupabaseCheckbox}
+                onChange={(e) => setUseSupabaseCheckbox(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-alegra-primary focus:ring-alegra-primary"
+              />
+              <label htmlFor="use-supabase-checkbox" className="text-xs font-bold text-alegra-secondary select-none cursor-pointer">
+                Activar Conexión de Supabase (Si está desactivado, usará datos mock/ficticios)
+              </label>
+            </div>
+
+            <div className="pt-3 border-t border-gray-150 flex items-center justify-between gap-4">
+              <button
+                type="button"
+                onClick={handleSaveConnection}
+                className="bg-alegra-primary hover:bg-alegra-primary-dark text-white font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                id="btn-save-supabase"
+              >
+                <Save size={14} /> Guardar credenciales y reiniciar
+              </button>
+
+              {saveSuccess && (
+                <span className="text-xs text-green-600 font-bold flex items-center gap-1 animate-fade-in">
+                  <CheckCircle2 size={14} /> ¡Sincronizado! Recargando...
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className={`rounded-xl border-2 p-4 transition-all ${
               resolvedMode === 'supabase'
-                ? 'border-emerald-400 bg-emerald-50'
-                : 'border-gray-100 bg-gray-50'
+                ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
+                : 'border-gray-100 bg-gray-50 text-gray-500'
             }`}>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-bold text-gray-700">Supabase Cloud</span>
-                {resolvedMode === 'supabase'
-                  ? <Wifi size={16} className="text-emerald-500" />
-                  : <WifiOff size={16} className="text-gray-400" />}
+                <span className="text-sm font-bold">Supabase Cloud</span>
+                {resolvedMode === 'supabase' ? <Wifi size={16} className="text-emerald-500" /> : <WifiOff size={16} />}
               </div>
-              <code className="text-[10px] text-gray-500 break-all block">
-                {SUPABASE_URL ? SUPABASE_URL.slice(0, 40) + '...' : 'VITE_SUPABASE_URL no configurado'}
-              </code>
-              <span className={`mt-2 inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${
-                resolvedMode === 'supabase' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'
+              <p className="text-[10px] break-all">
+                {supabaseUrlInput ? supabaseUrlInput : 'No configurado'}
+              </p>
+              <span className={`mt-2 inline-block text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                resolvedMode === 'supabase' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200'
               }`}>
                 {resolvedMode === 'supabase' ? '✓ Activo' : 'Inactivo'}
               </span>
             </div>
 
-            {/* Local NestJS */}
-            <div className={`rounded-xl border-2 p-4 transition-all ${
-              resolvedMode === 'local'
-                ? 'border-blue-400 bg-blue-50'
-                : 'border-gray-100 bg-gray-50'
-            }`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-bold text-gray-700">Backend Local (NestJS)</span>
-                {resolvedMode === 'local'
-                  ? <Wifi size={16} className="text-blue-500" />
-                  : <WifiOff size={16} className="text-gray-400" />}
-              </div>
-              <code className="text-[10px] text-gray-500 break-all block">{NESTJS_URL}</code>
-              <span className={`mt-2 inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${
-                resolvedMode === 'local' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'
-              }`}>
-                {resolvedMode === 'local' ? '✓ Activo' : 'Inactivo'}
-              </span>
-            </div>
-
-            {/* Mock Data */}
             <div className={`rounded-xl border-2 p-4 transition-all ${
               resolvedMode === 'mock'
-                ? 'border-amber-400 bg-amber-50'
-                : 'border-gray-100 bg-gray-50'
+                ? 'border-amber-400 bg-amber-50 text-amber-900'
+                : 'border-gray-100 bg-gray-50 text-gray-500'
             }`}>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-bold text-gray-700">Datos de Muestra (Mock)</span>
-                {resolvedMode === 'mock'
-                  ? <CheckCircle2 size={16} className="text-amber-500" />
-                  : <WifiOff size={16} className="text-gray-400" />}
+                <span className="text-sm font-bold">Datos de Muestra (Local Mock)</span>
+                {resolvedMode === 'mock' ? <CheckCircle2 size={16} className="text-amber-500" /> : <WifiOff size={16} />}
               </div>
-              <code className="text-[10px] text-gray-500 block">localStorage / mockData.ts</code>
-              <span className={`mt-2 inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${
-                resolvedMode === 'mock' ? 'bg-amber-100 text-amber-700' : 'bg-gray-200 text-gray-500'
+              <p className="text-[10px]">Sincronizado localmente mediante el LocalStorage del navegador.</p>
+              <span className={`mt-2 inline-block text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                resolvedMode === 'mock' ? 'bg-amber-100 text-amber-700' : 'bg-gray-200'
               }`}>
                 {resolvedMode === 'mock' ? '✓ Activo' : 'Inactivo'}
               </span>
             </div>
-          </div>
-
-          <div className="mt-4 bg-gray-900 rounded-lg p-4">
-            <p className="text-xs font-mono text-gray-400 mb-1"># Archivo .env (en la raíz del proyecto)</p>
-            <p className="text-xs font-mono text-emerald-400">VITE_USE_SUPABASE=<span className="text-yellow-300">{USE_SUPABASE ? 'true' : 'false'}</span></p>
-            <p className="text-xs font-mono text-emerald-400">VITE_SUPABASE_URL=<span className="text-yellow-300">{SUPABASE_URL || '"tu_url_de_supabase"'}</span></p>
-            <p className="text-xs font-mono text-emerald-400">VITE_SUPABASE_ANON_KEY=<span className="text-yellow-300">"tu_anon_key"</span></p>
-            <p className="text-xs font-mono text-emerald-400">VITE_NESTJS_API_URL=<span className="text-yellow-300">{NESTJS_URL}</span></p>
           </div>
         </div>
       </div>

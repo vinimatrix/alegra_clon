@@ -32,13 +32,21 @@ export default function Payroll({ employees, payrolls, onAddEmployee, onUpdateEm
     startDate: new Date().toISOString().split('T')[0],
     status: 'activo',
     email: '',
-    phone: ''
+    phone: '',
+    recibeTss: true,
+    recibeAfp: true,
+    recibeSeguroMedico: true
   });
 
   const [payrollPeriod, setPayrollPeriod] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
 
   const handleEditEmployee = (emp: Employee) => {
-    setEmployeeForm(emp);
+    setEmployeeForm({
+      ...emp,
+      recibeTss: emp.recibeTss !== false,
+      recibeAfp: emp.recibeAfp !== false,
+      recibeSeguroMedico: emp.recibeSeguroMedico !== false
+    });
     setEditingEmployeeId(emp.id);
     setIsEmployeeModalOpen(true);
   };
@@ -54,7 +62,7 @@ export default function Payroll({ employees, payrolls, onAddEmployee, onUpdateEm
       onAddEmployee(newEmp);
     }
     setIsEmployeeModalOpen(false);
-    setEmployeeForm({ name: '', cedula: '', position: '', department: '', salary: 0, startDate: new Date().toISOString().split('T')[0], status: 'activo', email: '', phone: '' });
+    setEmployeeForm({ name: '', cedula: '', position: '', department: '', salary: 0, startDate: new Date().toISOString().split('T')[0], status: 'activo', email: '', phone: '', recibeTss: true, recibeAfp: true, recibeSeguroMedico: true });
     setEditingEmployeeId(null);
   };
 
@@ -99,7 +107,7 @@ export default function Payroll({ employees, payrolls, onAddEmployee, onUpdateEm
           <div className="flex justify-end">
             <button
               onClick={() => {
-                setEmployeeForm({ name: '', cedula: '', position: '', department: '', salary: 0, startDate: new Date().toISOString().split('T')[0], status: 'activo', email: '', phone: '' });
+                setEmployeeForm({ name: '', cedula: '', position: '', department: '', salary: 0, startDate: new Date().toISOString().split('T')[0], status: 'activo', email: '', phone: '', recibeTss: true, recibeAfp: true, recibeSeguroMedico: true });
                 setEditingEmployeeId(null);
                 setIsEmployeeModalOpen(true);
               }}
@@ -133,6 +141,11 @@ export default function Payroll({ employees, payrolls, onAddEmployee, onUpdateEm
                       <td className="px-6 py-4">
                         <div className="font-semibold text-gray-700">{emp.position}</div>
                         <div className="text-xs text-gray-500">{emp.department}</div>
+                        <div className="flex gap-1 mt-1">
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${emp.recibeTss !== false ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-gray-100 text-gray-400 border border-gray-200 line-through'}`} title="Sujeto a TSS">TSS</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${(emp.recibeTss !== false && emp.recibeAfp !== false) ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-gray-100 text-gray-400 border border-gray-200 line-through'}`} title="Descuento AFP">AFP</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${(emp.recibeTss !== false && emp.recibeSeguroMedico !== false) ? 'bg-pink-50 text-pink-700 border border-pink-200' : 'bg-gray-100 text-gray-400 border border-gray-200 line-through'}`} title="Descuento Seguro Médico / SFS">SFS</span>
+                        </div>
                       </td>
                       <td className="px-6 py-4 font-mono font-bold text-[var(--app-primary)]">{fmt(emp.salary)}</td>
                       <td className="px-6 py-4">
@@ -221,8 +234,8 @@ export default function Payroll({ employees, payrolls, onAddEmployee, onUpdateEm
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {currentPeriodPayrolls.map(pay => {
-                    const sfs = pay.deductions.find(d => d.concept === 'SFS (Seguro Familiar de Salud)')?.employeeAmount || 0;
-                    const afp = pay.deductions.find(d => d.concept === 'AFP (Fondo de Pensiones)')?.employeeAmount || 0;
+                    const sfs = pay.deductions.find(d => d.concept === 'SFS' || d.concept === 'SFS (Seguro Familiar de Salud)')?.employeeAmount || 0;
+                    const afp = pay.deductions.find(d => d.concept === 'AFP' || d.concept === 'AFP (Fondo de Pensiones)')?.employeeAmount || 0;
                     return (
                       <tr key={pay.id} className="hover:bg-blue-50/30">
                         <td className="px-6 py-4 font-semibold text-gray-800">{pay.employeeName}</td>
@@ -302,6 +315,58 @@ export default function Payroll({ employees, payrolls, onAddEmployee, onUpdateEm
                 onChange={e => setEmployeeForm({...employeeForm, department: e.target.value})}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
               />
+            </div>
+
+            <div className="col-span-2 border-t border-gray-100 pt-3 mt-1">
+              <span className="block text-xs font-bold text-gray-700 mb-2 uppercase tracking-wider">Deducciones de Nómina (TSS RD)</span>
+              <div className="grid grid-cols-1 gap-2.5 bg-gray-50 p-3 rounded-xl border border-gray-150">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={employeeForm.recibeTss !== false}
+                    onChange={e => {
+                      const isChecked = e.target.checked;
+                      setEmployeeForm({
+                        ...employeeForm,
+                        recibeTss: isChecked
+                      });
+                    }}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-gray-800 block">Sujeto a TSS (Seguridad Social)</span>
+                    <span className="text-[10px] text-gray-500 block">Indica si aplica retenciones de ley de la República Dominicana.</span>
+                  </div>
+                </label>
+
+                {employeeForm.recibeTss !== false && (
+                  <div className="pl-6 pt-2 border-t border-gray-200/60 mt-1 flex flex-col gap-2 animate-fade-in text-xs">
+                    <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={employeeForm.recibeAfp !== false}
+                        onChange={e => setEmployeeForm({...employeeForm, recibeAfp: e.target.checked})}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                      />
+                      <div>
+                        <span className="text-xs font-semibold text-gray-700 block">Deducir AFP (Fondo de Pensiones - 2.87%)</span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={employeeForm.recibeSeguroMedico !== false}
+                        onChange={e => setEmployeeForm({...employeeForm, recibeSeguroMedico: e.target.checked})}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                      />
+                      <div>
+                        <span className="text-xs font-semibold text-gray-700 block">Deducir Seguro Médico / SFS (Salud Fam. - 3.04%)</span>
+                      </div>
+                    </label>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex justify-end pt-4 mt-2 border-t border-gray-100">

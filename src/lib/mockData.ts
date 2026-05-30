@@ -270,6 +270,51 @@ export const INITIAL_ORDERS: RestaurantOrder[] = [
     total: 4991.40,
     waiterName: 'Evelyn Batista',
     createdAt: '16:05'
+  },
+  {
+    id: 'ord-105',
+    tableId: 't-01',
+    tableName: 'Mesa 1 (Ventanales)',
+    items: [
+      { productId: 'p-01', name: 'Mofongo con Chicharrón', quantity: 2, price: 450.00 },
+      { productId: 'p-06', name: 'Limonada Natural Imperial', quantity: 2, price: 125.00 }
+    ],
+    status: 'cobrada',
+    subtotal: 1150.00,
+    taxes: 207.00,
+    total: 1357.00,
+    waiterName: 'Juan Carlos',
+    createdAt: '2026-05-30 11:00'
+  },
+  {
+    id: 'ord-106',
+    tableId: 't-04',
+    tableName: 'Mesa 4 (Interior)',
+    items: [
+      { productId: 'p-04', name: 'Hamburguesa Artesanal "La Criolla"', quantity: 1, price: 480.00 },
+      { productId: 'p-07', name: 'Refresco Cola Regular', quantity: 1, price: 80.00 }
+    ],
+    status: 'cobrada',
+    subtotal: 560.00,
+    taxes: 100.80,
+    total: 660.80,
+    waiterName: 'Milagros García',
+    createdAt: '2026-05-30 12:45'
+  },
+  {
+    id: 'ord-107',
+    tableId: 't-06',
+    tableName: 'Mesa 6 (Terraza Alta)',
+    items: [
+      { productId: 'p-02', name: 'Pechuga de Pollo a la Plancha', quantity: 2, price: 390.00 },
+      { productId: 'p-05', name: 'Cerveza Presidente Grande', quantity: 3, price: 230.00 }
+    ],
+    status: 'cobrada',
+    subtotal: 1470.00,
+    taxes: 264.60,
+    total: 1734.60,
+    waiterName: 'Evelyn Batista',
+    createdAt: '2026-05-29 13:15'
   }
 ];
 

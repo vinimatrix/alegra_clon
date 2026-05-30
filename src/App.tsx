@@ -7,12 +7,12 @@ import React, { useState, useEffect } from 'react';
 import {
   Building2, TrendingUp, FileText, Package, ShoppingBag, Smartphone,
   BookOpen, Database, Menu, X, User, BellRing, Settings as SettingsIcon,
-  Users, Receipt, FileBarChart
+  Users, Receipt, FileBarChart, Coffee, ChefHat
 } from 'lucide-react';
 
 import {
   Product, Invoice, Account, JournalEntry, Client, Expense,
-  Employee, PayrollEntry, Warehouse // <--- Importación añadida
+  Employee, PayrollEntry, Warehouse, CashSession, CajaClosureHistory
 } from './types';
 
 import {
@@ -22,7 +22,7 @@ import {
   getLocalStorageState, saveLocalStorageState
 } from './lib/mockData';
 
-import { api, USE_SUPABASE } from './services/api';
+import { api, isSupabaseActive } from './services/api';
 
 // Import subcomponents
 import Dashboard from './components/Dashboard';
@@ -37,13 +37,15 @@ import Contacts from './components/Contacts';
 import Expenses from './components/Expenses';
 import ReportsDGII from './components/ReportsDGII';
 import Payroll from './components/Payroll';
+import KitchenKDS from './components/KitchenKDS';
+import KitchenManager from './components/KitchenManager';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<string>('dashboard'); // Corregido nombre de estado
+  const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(USE_SUPABASE);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Core ERP States
+  // Core ERP States with localStorage sync
   const [products, setProducts] = useState<Product[]>(() => getLocalStorageState('alegra_products', INITIAL_PRODUCTS));
   const [invoices, setInvoices] = useState<Invoice[]>(() => getLocalStorageState('alegra_invoices', INITIAL_INVOICES));
   const [accounts, setAccounts] = useState<Account[]>(() => getLocalStorageState('alegra_accounts', INITIAL_ACCOUNTS));
@@ -54,16 +56,550 @@ export default function App() {
   const [employees, setEmployees] = useState<Employee[]>(() => getLocalStorageState('alegra_employees', INITIAL_EMPLOYEES));
   const [payrolls, setPayrolls] = useState<PayrollEntry[]>(() => getLocalStorageState('alegra_payrolls', INITIAL_PAYROLLS));
   const [clients, setClients] = useState<Client[]>(() => getLocalStorageState('alegra_clients', INITIAL_CLIENTS));
+  const [categories, setCategories] = useState<string[]>(() => getLocalStorageState('alegra_categories', ['Platos', 'Bebidas', 'Tecnología', 'Hogar']));
+  const [taxes, setTaxes] = useState<any[]>(() => getLocalStorageState('alegra_taxes', [
+    { id: 'tax-1', name: 'ITBIS 18%', rate: 18, isDefault: true },
+    { id: 'tax-2', name: 'ITBIS Simplificado 12%', rate: 12 },
+    { id: 'tax-3', name: 'Impuesto Selectivo 10%', rate: 10 },
+    { id: 'tax-4', name: 'Exento 0%', rate: 0 }
+  ]));
+
+  // Cash Register (Caja) states
+  const [cajaSession, setCajaSession] = useState<CashSession>(() => {
+    const local = localStorage.getItem('alegra_caja_session');
+    if (local) {
+      try {
+        return JSON.parse(local);
+      } catch (e) {}
+    }
+    return {
+      id: '',
+      isOpen: false,
+      openedAt: '',
+      initialBalance: 0,
+      expectedBalance: 0,
+      salesCash: 0,
+      salesCard: 0,
+      salesTransfer: 0
+    };
+  });
+
+  const [cajaHistory, setCajaHistory] = useState<CajaClosureHistory[]>(() => {
+    const local = localStorage.getItem('alegra_caja_history');
+    if (local) {
+      try {
+        return JSON.parse(local);
+      } catch (e) {}
+    }
+    return [];
+  });
 
   const warehouses: Warehouse[] = INITIAL_WAREHOUSES;
 
-  // ... (Tus efectos de carga y lógica de negocios se mantienen igual) ...
+  // Supabase Live Data Syncing Trigger
+  useEffect(() => {
+    async function initData() {
+      if (isSupabaseActive()) {
+        setIsLoading(true);
+        try {
+          const [
+            dbProducts, dbInvoices, dbAccounts, dbJournalEntries,
+            dbTables, dbOrders, dbExpenses, dbEmployees, dbPayrolls, dbClients
+          ] = await Promise.all([
+            api.getProducts().catch(e => { console.warn('Error loading products', e); return null; }),
+            api.getInvoices().catch(e => { console.warn('Error loading invoices', e); return null; }),
+            api.getAccounts().catch(e => { console.warn('Error loading accounts', e); return null; }),
+            api.getJournalEntries().catch(e => { console.warn('Error loading journal entries', e); return null; }),
+            api.getTables().catch(e => { console.warn('Error loading tables', e); return null; }),
+            api.getOrders().catch(e => { console.warn('Error loading orders', e); return null; }),
+            api.getExpenses().catch(e => { console.warn('Error loading expenses', e); return null; }),
+            api.getEmployees().catch(e => { console.warn('Error loading employees', e); return null; }),
+            api.getPayrolls().catch(e => { console.warn('Error loading payrolls', e); return null; }),
+            api.getClients().catch(e => { console.warn('Error loading clients', e); return null; }),
+          ]);
+
+          if (dbProducts !== null) setProducts(dbProducts);
+          if (dbInvoices !== null) setInvoices(dbInvoices);
+          if (dbAccounts !== null) setAccounts(dbAccounts);
+          if (dbJournalEntries !== null) setJournalEntries(dbJournalEntries);
+          if (dbTables !== null && dbTables.length > 0) setTables(dbTables);
+          if (dbOrders !== null) setOrders(dbOrders);
+          if (dbExpenses !== null) setExpenses(dbExpenses);
+          if (dbEmployees !== null) setEmployees(dbEmployees);
+          if (dbPayrolls !== null) setPayrolls(dbPayrolls);
+          if (dbClients !== null) setClients(dbClients);
+        } catch (error) {
+          console.error('Error synchronizing with Supabase:', error);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    }
+    initData();
+  }, []);
+
+  // Effects to save state changes automatically
+  useEffect(() => {
+    saveLocalStorageState('alegra_products', products);
+  }, [products]);
+
+  useEffect(() => {
+    saveLocalStorageState('alegra_invoices', invoices);
+  }, [invoices]);
+
+  useEffect(() => {
+    saveLocalStorageState('alegra_accounts', accounts);
+  }, [accounts]);
+
+  useEffect(() => {
+    saveLocalStorageState('alegra_journal_entries', journalEntries);
+  }, [journalEntries]);
+
+  useEffect(() => {
+    saveLocalStorageState('alegra_tables', tables);
+  }, [tables]);
+
+  useEffect(() => {
+    saveLocalStorageState('alegra_orders', orders);
+  }, [orders]);
+
+  useEffect(() => {
+    saveLocalStorageState('alegra_expenses', expenses);
+  }, [expenses]);
+
+  useEffect(() => {
+    saveLocalStorageState('alegra_employees', employees);
+  }, [employees]);
+
+  useEffect(() => {
+    saveLocalStorageState('alegra_payrolls', payrolls);
+  }, [payrolls]);
+
+  useEffect(() => {
+    saveLocalStorageState('alegra_clients', clients);
+  }, [clients]);
+
+  useEffect(() => {
+    saveLocalStorageState('alegra_categories', categories);
+  }, [categories]);
+
+  useEffect(() => {
+    saveLocalStorageState('alegra_taxes', taxes);
+  }, [taxes]);
+
+  useEffect(() => {
+    localStorage.setItem('alegra_caja_session', JSON.stringify(cajaSession));
+  }, [cajaSession]);
+
+  useEffect(() => {
+    localStorage.setItem('alegra_caja_history', JSON.stringify(cajaHistory));
+  }, [cajaHistory]);
+
+  // Seeder to populate clean custom Supabase DB on demand
+  const handleSeedSupabase = async () => {
+    if (!window.confirm('¿Quieres rellenar tu base de datos de Supabase con datos semilla de muestra para probar Alegra de inmediato?')) {
+      return;
+    }
+    setIsLoading(true);
+    try {
+      // Seed clients
+      for (const client of INITIAL_CLIENTS) {
+        await api.createClient(client);
+      }
+      // Seed products
+      for (const prod of INITIAL_PRODUCTS) {
+        await api.createProduct(prod);
+      }
+      // Seed invoices
+      for (const inv of INITIAL_INVOICES) {
+        await api.createInvoice(inv);
+      }
+      // Seed expenses
+      for (const exp of INITIAL_EXPENSES) {
+        await api.createExpense(exp);
+      }
+      // Seed employees
+      for (const emp of INITIAL_EMPLOYEES) {
+        await api.createEmployee(emp);
+      }
+      // Seed accounts
+      for (const acc of INITIAL_ACCOUNTS) {
+        await api.createAccount(acc);
+      }
+      alert('¡Base de datos sembrada con éxito! La página se recargará ahora.');
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
+      alert('Error sembrando datos: ' + (e as Error).message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleOpenCaja = (initialBalance: number) => {
+    setCajaSession({
+      id: `session-${Date.now()}`,
+      isOpen: true,
+      openedAt: new Date().toISOString(),
+      initialBalance,
+      expectedBalance: initialBalance,
+      salesCash: 0,
+      salesCard: 0,
+      salesTransfer: 0
+    });
+  };
+
+  const handleCloseCaja = (actualBalance: number) => {
+    if (!cajaSession.isOpen) return;
+    
+    // Calculate final dynamic sales in this shift
+    const invoicesSinceOpen = invoices.filter(inv => {
+      return new Date(inv.issueDate) >= new Date(cajaSession.openedAt) && inv.status === 'pagada';
+    });
+
+    const salesCash = invoicesSinceOpen
+      .filter(inv => inv.paymentMethod?.toLowerCase().includes('efectiv') || !inv.paymentMethod)
+      .reduce((sum, inv) => sum + inv.total, 0);
+
+    const salesCard = invoicesSinceOpen
+      .filter(inv => inv.paymentMethod?.toLowerCase().includes('tarjeta'))
+      .reduce((sum, inv) => sum + inv.total, 0);
+
+    const salesTransfer = invoicesSinceOpen
+      .filter(inv => inv.paymentMethod?.toLowerCase().includes('transfe') || inv.paymentMethod?.toLowerCase().includes('banco') || inv.paymentMethod?.toLowerCase().includes('deposito'))
+      .reduce((sum, inv) => sum + inv.total, 0);
+
+    const expectedBalance = cajaSession.initialBalance + salesCash;
+    const difference = actualBalance - expectedBalance;
+
+    const finishedSession: CajaClosureHistory = {
+      id: cajaSession.id,
+      openedAt: cajaSession.openedAt,
+      closedAt: new Date().toISOString(),
+      initialBalance: cajaSession.initialBalance,
+      expectedBalance,
+      actualBalance,
+      difference,
+      salesCash,
+      salesCard,
+      salesTransfer,
+      receiptsCount: invoicesSinceOpen.length
+    };
+
+    setCajaHistory(prev => [finishedSession, ...prev]);
+
+    // Reset current active session
+    setCajaSession({
+      id: '',
+      isOpen: false,
+      openedAt: '',
+      initialBalance: 0,
+      expectedBalance: 0,
+      salesCash: 0,
+      salesCard: 0,
+      salesTransfer: 0
+    });
+  };
+
+
+  // Load active theme during initial component mount
+  useEffect(() => {
+    const activeTheme = localStorage.getItem('alegra_theme') || 'default';
+    if (activeTheme === 'default') {
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', activeTheme);
+    }
+  }, []);
+
+  // Handlers for state updates
+  const handleAddInvoice = async (newInvoice: Invoice) => {
+    setInvoices(prev => [newInvoice, ...prev]);
+    if (isSupabaseActive()) {
+      try {
+        await api.createInvoice(newInvoice);
+      } catch (e) {
+        console.error('Error saving invoice to Supabase:', e);
+      }
+    }
+  };
+
+  const handleCancelInvoice = async (id: string) => {
+    setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status: 'anulada' as const } : inv));
+    if (isSupabaseActive()) {
+      try {
+        await api.updateInvoice(id, { status: 'anulada' });
+      } catch (e) {
+        console.error('Error updating invoice status to Supabase:', e);
+      }
+    }
+  };
+
+  const handleAddProduct = async (newProduct: Product) => {
+    setProducts(prev => [newProduct, ...prev]);
+    if (isSupabaseActive()) {
+      try {
+        await api.createProduct(newProduct);
+      } catch (e) {
+        console.error('Error saving product to Supabase:', e);
+      }
+    }
+  };
+
+  const handleUpdateProduct = async (updatedProduct: Product) => {
+    setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
+    if (isSupabaseActive()) {
+      try {
+        await api.updateProduct(updatedProduct.id, updatedProduct);
+      } catch (e) {
+        console.error('Error updating product in Supabase:', e);
+      }
+    }
+  };
+
+  const handleDeleteProduct = async (productId: string) => {
+    setProducts(prev => prev.filter(p => p.id !== productId));
+    if (isSupabaseActive()) {
+      try {
+        await api.deleteProduct(productId);
+      } catch (e) {
+        console.error('Error deleting product from Supabase:', e);
+      }
+    }
+  };
+
+  const handleAdjustStock = async (productId: string, adjustmentQty: number, reason: string) => {
+    setProducts(prev => {
+      const updated = prev.map(prod => prod.id === productId ? { ...prod, stock: Math.max(0, prod.stock + adjustmentQty) } : prod);
+      const targetProd = updated.find(p => p.id === productId);
+      if (targetProd && isSupabaseActive()) {
+        api.updateProduct(productId, { stock: targetProd.stock }).catch(e => console.error(e));
+      }
+      return updated;
+    });
+  };
+
+  const handleAddContact = async (contact: Client) => {
+    if (!contact.id) {
+      contact.id = `c-${Date.now()}`;
+    }
+    setClients(prev => [...prev, contact]);
+    if (isSupabaseActive()) {
+      try {
+        await api.createClient(contact);
+      } catch (e) {
+        console.error('Error saving client to Supabase:', e);
+      }
+    }
+  };
+
+  const handleUpdateContact = async (contact: Client) => {
+    setClients(prev => prev.map(c => c.id === contact.id ? contact : c));
+    if (isSupabaseActive()) {
+      try {
+        await api.updateClient(contact.id, contact);
+      } catch (e) {
+        console.error('Error updating client in Supabase:', e);
+      }
+    }
+  };
+
+  const handleDeleteContact = async (id: string) => {
+    setClients(prev => prev.filter(c => c.id !== id));
+    if (isSupabaseActive()) {
+      try {
+        await api.deleteClient(id);
+      } catch (e) {
+        console.error('Error deleting client in Supabase:', e);
+      }
+    }
+  };
+
+  const handleAddExpense = async (expense: Expense) => {
+    if (!expense.id) {
+      expense.id = `exp-${Date.now()}`;
+    }
+    setExpenses(prev => [expense, ...prev]);
+    if (isSupabaseActive()) {
+      try {
+        await api.createExpense(expense);
+      } catch (e) {
+        console.error('Error saving expense to Supabase:', e);
+      }
+    }
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    setExpenses(prev => prev.filter(exp => exp.id !== id));
+    if (isSupabaseActive()) {
+      try {
+        await api.deleteExpense(id);
+      } catch (e) {
+        console.error('Error deleting expense in Supabase:', e);
+      }
+    }
+  };
+
+  const handleAddEmployee = async (e: Employee) => {
+    if (!e.id) {
+      e.id = `emp-${Date.now()}`;
+    }
+    setEmployees(prev => [...prev, e]);
+    if (isSupabaseActive()) {
+      try {
+        await api.createEmployee(e);
+      } catch (err) {
+        console.error('Error saving employee to Supabase:', err);
+      }
+    }
+  };
+
+  const handleUpdateEmployee = async (id: string, e: Employee) => {
+    setEmployees(prev => prev.map(emp => emp.id === id ? e : emp));
+    if (isSupabaseActive()) {
+      try {
+        await api.updateEmployee(id, e);
+      } catch (err) {
+        console.error('Error updating employee in Supabase:', err);
+      }
+    }
+  };
+
+  const handleDeleteEmployee = async (id: string) => {
+    setEmployees(prev => prev.filter(emp => emp.id !== id));
+    if (isSupabaseActive()) {
+      try {
+        await api.deleteEmployee(id);
+      } catch (err) {
+        console.error('Error deleting employee in Supabase:', err);
+      }
+    }
+  };
+
+  const handleGeneratePayroll = async (period: string) => {
+    const activeEmployees = employees.filter(emp => emp.status === 'activo');
+    
+    const newEntries: PayrollEntry[] = activeEmployees.map(emp => {
+      const receivesTss = emp.recibeTss !== false;
+      const receivesAfp = receivesTss && emp.recibeAfp !== false;
+      const receivesSfs = receivesTss && emp.recibeSeguroMedico !== false;
+
+      const sfsEmployee = receivesSfs ? emp.salary * 0.0304 : 0;
+      const sfsEmployer = receivesSfs ? emp.salary * 0.0709 : 0;
+      const afpEmployee = receivesAfp ? emp.salary * 0.0287 : 0;
+      const afpEmployer = receivesAfp ? emp.salary * 0.0710 : 0;
+      
+      const deductions = [];
+      if (receivesSfs) {
+        deductions.push({
+          concept: 'SFS',
+          employeeRate: 3.04,
+          employerRate: 7.09,
+          employeeAmount: sfsEmployee,
+          employerAmount: sfsEmployer
+        });
+      }
+      if (receivesAfp) {
+        deductions.push({
+          concept: 'AFP',
+          employeeRate: 2.87,
+          employerRate: 7.10,
+          employeeAmount: afpEmployee,
+          employerAmount: afpEmployer
+        });
+      }
+
+      const totalDeductions = sfsEmployee + afpEmployee;
+      const netSalary = emp.salary - totalDeductions;
+
+      return {
+        id: `pay-${emp.id}-${period}`,
+        employeeId: emp.id,
+        employeeName: emp.name,
+        period,
+        grossSalary: emp.salary,
+        deductions,
+        totalDeductions,
+        netSalary,
+        status: 'pagada' as const
+      };
+    });
+
+    setPayrolls(prev => [
+      ...prev.filter(p => p.period !== period),
+      ...newEntries
+    ]);
+
+    if (isSupabaseActive()) {
+      for (const pay of newEntries) {
+        api.createPayroll(pay).catch(e => console.error('Error creating payroll:', e));
+      }
+    }
+  };
+
+  const handleAddJournalEntry = async (entry: JournalEntry) => {
+    setJournalEntries(prev => [entry, ...prev]);
+
+    // Dynamically update the account balances during double entries
+    setAccounts(prevAccounts => {
+      return prevAccounts.map(acc => {
+        let balanceChange = 0;
+        const linesForAcc = entry.lines.filter(l => l.accountCode === acc.code);
+        for (const line of linesForAcc) {
+          const debitVal = line.debit;
+          const creditVal = line.credit;
+          
+          if (acc.type === 'activo' || acc.type === 'egreso') {
+            balanceChange += (debitVal - creditVal);
+          } else {
+            balanceChange += (creditVal - debitVal);
+          }
+        }
+        return { ...acc, balance: acc.balance + balanceChange };
+      });
+    });
+
+    if (isSupabaseActive()) {
+      try {
+        await api.createJournalEntry(entry);
+      } catch (e) {
+        console.error('Error saving journal entry:', e);
+      }
+    }
+  };
+
+  const handleUpdateTables = (updatedTables: any[]) => {
+    setTables(updatedTables);
+    if (isSupabaseActive()) {
+      for (const t of updatedTables) {
+        api.updateTable(t.id, t).catch(e => console.warn('Error updating table:', e));
+      }
+    }
+  };
+
+  const handleUpdateOrders = (updatedOrders: any[]) => {
+    setOrders(updatedOrders);
+    if (isSupabaseActive()) {
+      for (const o of updatedOrders) {
+        api.updateOrder(o.id, o).catch(async (e) => {
+          try {
+            await api.createOrder(o);
+          } catch(err) {
+            console.warn('Error creating comanda in Supabase fallback:', err);
+          }
+        });
+      }
+    }
+  };
+
 
   const menuItems = [
     { id: 'dashboard', label: 'Inicio / KPI', icon: TrendingUp },
     { id: 'facturacion', label: 'Facturación Ventas', icon: FileText },
     { id: 'pos-restaurante', label: 'POS & Restaurante', icon: ShoppingBag },
     { id: 'pos-mobile', label: 'Vista POS Mobile (Simulator)', icon: Smartphone },
+    { id: 'cocina-kds', label: 'Pantalla de Cocina (KDS)', icon: Coffee },
+    { id: 'kitchen-manager', label: 'Gestión Cocina (Admin)', icon: ChefHat },
     { id: 'contactos', label: 'Contactos', icon: Users },
     { id: 'gastos', label: 'Gastos y Compras', icon: Receipt },
     { id: 'inventario', label: 'Inventario / Almacén', icon: Package },
@@ -79,27 +615,270 @@ export default function App() {
     setIsMobileMenuOpen(false);
   };
 
-  return (
-    <div className="min-h-screen bg-[#F4F7FB] flex flex-col md:flex-row font-sans selection:bg-blue-100" id="app-wrapper">
-      {/* ... (Tu Navbar y Sidebar se mantienen igual) ... */}
+  const currentTabLabel = menuItems.find(item => item.id === activeTab)?.label || 'Alegra';
 
-      <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full transition-all duration-300">
-        {isLoading ? (
-          <div className="flex flex-col items-center justify-center min-h-[60vh]">
-            <div className="w-16 h-16 border-4 border-blue-200 border-t-alegra-primary rounded-full animate-spin"></div>
+  return (
+    <div className="min-h-screen bg-alegra-bg flex flex-col md:flex-row font-sans selection:bg-blue-100 text-gray-800" id="app-wrapper">
+      {/* SIDEBAR FOR DESKTOP */}
+      <aside className="hidden md:flex flex-col w-64 bg-alegra-secondary text-white shrink-0 shadow-lg" id="sidebar">
+        <div className="p-5 border-b border-white/10 flex items-center gap-3">
+          <div className="bg-alegra-primary p-2 rounded-lg text-white">
+            <Building2 className="w-6 h-6" />
           </div>
-        ) : (
-          <div className="animate-fade-in" id="main-screens-render">
-            {activeTab === 'dashboard' && (
-              <Dashboard products={products} invoices={invoices} journalEntries={journalEntries} navigateToTab={navigateToTab} />
-            )}
-            {activeTab === 'facturacion' && (
-              <Invoicing invoices={invoices} products={products} clients={clients} onAddInvoice={handleAddInvoice} onCancelInvoice={handleCancelInvoice} />
-            )}
-            {/* ... resto de tus condiciones ... */}
+          <div>
+            <h1 className="font-display font-bold text-lg leading-tight">Alegra Clon</h1>
+            <p className="text-[10px] text-white/60 tracking-wider uppercase font-mono">ERP dominicano</p>
           </div>
-        )}
-      </main>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto p-4 space-y-1.5 scrollbar-thin">
+          {menuItems.map(item => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                id={`menu-item-${item.id}`}
+                onClick={() => navigateToTab(item.id)}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  isActive
+                    ? 'bg-alegra-primary text-white shadow'
+                    : 'text-white/70 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                <Icon className={`w-4 h-4 shrink-0 transition-transform duration-200 ${isActive ? 'scale-110' : ''}`} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="p-4 border-t border-white/10 text-xs text-white/50 space-y-2 font-mono">
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+            <span>Base de datos activa: Local</span>
+          </div>
+          <div>vinimatrix@gmail.com</div>
+        </div>
+      </aside>
+
+      {/* MOBILE HEADER */}
+      <header className="md:hidden bg-alegra-secondary text-white px-4 py-3 flex items-center justify-between sticky top-0 z-50 shadow-md">
+        <div className="flex items-center gap-2">
+          <Building2 className="w-5 h-5 text-alegra-primary" />
+          <span className="font-display font-bold text-base">Alegra Clon</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs bg-white/10 px-2 py-1 rounded text-white/80 font-medium">
+            {currentTabLabel}
+          </span>
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="p-1 px-2 rounded hover:bg-white/15"
+            aria-label="Menú principal"
+          >
+            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
+      </header>
+
+      {/* MOBILE MENU DROPDOWN */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden bg-alegra-secondary border-b border-white/15 animate-fade-in fixed top-[50px] left-0 w-full z-40 max-h-[calc(100vh-50px)] overflow-y-auto shadow-xl">
+          <nav className="p-4 space-y-1">
+            {menuItems.map(item => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => navigateToTab(item.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                    isActive
+                      ? 'bg-alegra-primary text-white'
+                      : 'text-white/70 hover:bg-white/10'
+                  }`}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+            <div className="pt-4 border-t border-white/10 text-xs text-white/50 space-y-1 font-mono px-4">
+              <p>User: vinimatrix@gmail.com</p>
+              <p>Modo: Local / LocalStorage</p>
+            </div>
+          </nav>
+        </div>
+      )}
+
+      {/* MAIN CONTAINER */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+        {/* DESKTOP HEADER */}
+        <header className="hidden md:flex bg-white h-16 border-b border-gray-200 items-center justify-between px-8 shrink-0">
+          <h2 className="font-display font-semibold text-xl text-gray-800">{currentTabLabel}</h2>
+          <div className="flex items-center gap-4">
+            <button className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 relative" aria-label="Notificaciones">
+              <BellRing className="w-5 h-5" />
+              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500"></span>
+            </button>
+            <div className="flex items-center gap-2 border-l border-gray-200 pl-4">
+              <div className="w-8 h-8 rounded-full bg-alegra-primary/10 flex items-center justify-center text-alegra-primary font-bold">
+                V
+              </div>
+              <div className="text-left">
+                <p className="text-xs font-semibold text-gray-700">vinimatrix@gmail.com</p>
+                <p className="text-[10px] text-gray-400 font-mono">Administrador</p>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* WORKSPACE SCREENS */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full transition-all duration-300">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center min-h-[60vh]">
+              <div className="w-16 h-16 border-4 border-blue-200 border-t-alegra-primary rounded-full animate-spin"></div>
+            </div>
+          ) : (
+            <div className="animate-fade-in" id="main-screens-render">
+              {isSupabaseActive() && products.length === 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+                  <div className="text-sm text-amber-800">
+                    <span className="font-bold">⚡ Conectado a tu nube de Supabase:</span> Tu catálogo en la nube está vacío. Si lo deseas, puedes sembrar datos demo de muestra al instante para probar todas las funciones.
+                  </div>
+                  <button
+                    onClick={handleSeedSupabase}
+                    className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-xs transition-all cursor-pointer"
+                  >
+                    Sembrar datos semilla
+                  </button>
+                </div>
+              )}
+
+              {activeTab === 'dashboard' && (
+                <Dashboard products={products} invoices={invoices} journalEntries={journalEntries} navigateToTab={navigateToTab} />
+              )}
+              {activeTab === 'facturacion' && (
+                <Invoicing 
+                  invoices={invoices} 
+                  products={products} 
+                  clients={clients} 
+                  onAddInvoice={handleAddInvoice} 
+                  onCancelInvoice={handleCancelInvoice} 
+                />
+              )}
+              {activeTab === 'pos-restaurante' && (
+                <POSRestaurants
+                  products={products}
+                  clients={clients}
+                  tables={tables}
+                  orders={orders}
+                  invoices={invoices}
+                  onAddInvoice={handleAddInvoice}
+                  onUpdateTables={handleUpdateTables}
+                  onUpdateOrders={handleUpdateOrders}
+                  cajaSession={cajaSession}
+                  cajaHistory={cajaHistory}
+                  onOpenCaja={handleOpenCaja}
+                  onCloseCaja={handleCloseCaja}
+                  categories={categories}
+                  onUpdateCategories={setCategories}
+                  taxes={taxes}
+                  onUpdateTaxes={setTaxes}
+                />
+              )}
+              {activeTab === 'pos-mobile' && (
+                <POSMobileSimulator 
+                  products={products} 
+                  tables={tables}
+                  orders={orders}
+                  onUpdateOrders={handleUpdateOrders}
+                  onUpdateTables={handleUpdateTables}
+                  onAddJournalEntry={handleAddJournalEntry}
+                />
+              )}
+              {activeTab === 'cocina-kds' && (
+                <KitchenKDS 
+                  orders={orders}
+                  tables={tables}
+                  products={products}
+                  onUpdateOrders={handleUpdateOrders}
+                  onUpdateTables={handleUpdateTables}
+                />
+              )}
+              {activeTab === 'kitchen-manager' && (
+                <KitchenManager 
+                  orders={orders}
+                  tables={tables}
+                  products={products}
+                  onUpdateOrders={handleUpdateOrders}
+                  onUpdateTables={handleUpdateTables}
+                />
+              )}
+              {activeTab === 'contactos' && (
+                <Contacts 
+                  clients={clients} 
+                  onAddContact={handleAddContact} 
+                  onUpdateContact={handleUpdateContact} 
+                  onDeleteContact={handleDeleteContact} 
+                />
+              )}
+              {activeTab === 'gastos' && (
+                <Expenses 
+                  expenses={expenses} 
+                  clients={clients} 
+                  onAddExpense={handleAddExpense} 
+                  onDeleteExpense={handleDeleteExpense} 
+                />
+              )}
+              {activeTab === 'inventario' && (
+                <Inventory 
+                  products={products} 
+                  warehouses={warehouses} 
+                  onAdjustStock={handleAdjustStock} 
+                  onAddProduct={handleAddProduct} 
+                  onUpdateProduct={handleUpdateProduct}
+                  onDeleteProduct={handleDeleteProduct}
+                  invoices={invoices}
+                  orders={orders}
+                  categories={categories}
+                  onUpdateCategories={setCategories}
+                  taxes={taxes}
+                  onUpdateTaxes={setTaxes}
+                />
+              )}
+              {activeTab === 'nomina' && (
+                <Payroll 
+                  employees={employees} 
+                  payrolls={payrolls} 
+                  onAddEmployee={handleAddEmployee} 
+                  onUpdateEmployee={handleUpdateEmployee} 
+                  onDeleteEmployee={handleDeleteEmployee} 
+                  onGeneratePayroll={handleGeneratePayroll} 
+                />
+              )}
+              {activeTab === 'contabilidad' && (
+                <Accounting 
+                  accounts={accounts} 
+                  journalEntries={journalEntries} 
+                  onAddJournalEntry={handleAddJournalEntry} 
+                  onUpdateAccounts={setAccounts}
+                />
+              )}
+              {activeTab === 'reportes-dgii' && (
+                <ReportsDGII invoices={invoices} expenses={expenses} />
+              )}
+              {activeTab === 'backend' && (
+                <BackendPrep />
+              )}
+              {activeTab === 'settings' && (
+                <Settings />
+              )}
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

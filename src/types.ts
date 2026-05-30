@@ -82,6 +82,8 @@ export interface RestaurantOrderItem {
   quantity: number;
   price: number;
   notes?: string;
+  section?: string;          // E.g. 'Bebidas', 'Platos Fuertes', 'Entradas', etc.
+  assignedStation?: string;  // E.g. 'Parrilla', 'Barra', 'Horno', 'Cocina Fría'
 }
 
 export interface RestaurantOrder {
@@ -138,6 +140,35 @@ export interface CashRegister {
   currentBalance: number;
 }
 
+export interface CashSession {
+  id: string;
+  isOpen: boolean;
+  openedAt: string;
+  closedAt?: string;
+  initialBalance: number;
+  expectedBalance: number;
+  actualBalance?: number;
+  difference?: number;
+  salesCash: number;
+  salesCard: number;
+  salesTransfer: number;
+}
+
+export interface CajaClosureHistory {
+  id: string;
+  openedAt: string;
+  closedAt: string;
+  initialBalance: number;
+  expectedBalance: number;
+  actualBalance: number;
+  difference: number;
+  salesCash: number;
+  salesCard: number;
+  salesTransfer: number;
+  receiptsCount: number;
+}
+
+
 export interface Employee {
   id: string;
   name: string;
@@ -149,6 +180,9 @@ export interface Employee {
   status: 'activo' | 'inactivo';
   email?: string;
   phone?: string;
+  recibeTss?: boolean;
+  recibeAfp?: boolean;
+  recibeSeguroMedico?: boolean;
 }
 
 export interface PayrollDeduction {
