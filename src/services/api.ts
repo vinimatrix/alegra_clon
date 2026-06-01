@@ -128,7 +128,10 @@ async function fetcher(endpoint: string, method: string, body?: any): Promise<an
 
   if (isSupabaseActive()) {
     const keyCol = table === 'accounts' ? 'code' : 'id';
-    const dbBody = body ? toSnakeCase(body) : undefined;
+    let dbBody = body ? toSnakeCase(body) : undefined;
+    if ((table === 'tables' || table === 'restaurant_tables') && dbBody) {
+      delete dbBody.current_order_id;
+    }
     
     // ── SUPABASE MODE ──────────────────────────────────────────
     if (method === 'GET') {

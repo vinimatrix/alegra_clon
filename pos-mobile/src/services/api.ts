@@ -198,7 +198,12 @@ export const mobileApi = {
   updateTable: async (id: string, tableUpdate: any): Promise<any> => {
     if (isSupabaseActive()) {
       try {
-        const dbBody = toSnakeCase(tableUpdate);
+        const cleanUpdate: any = {};
+        if (tableUpdate.name !== undefined) cleanUpdate.name = tableUpdate.name;
+        if (tableUpdate.status !== undefined) cleanUpdate.status = tableUpdate.status;
+        if (tableUpdate.capacity !== undefined) cleanUpdate.capacity = tableUpdate.capacity;
+
+        const dbBody = toSnakeCase(cleanUpdate);
         const { data, error } = await supabase
           .from('tables')
           .update(dbBody)

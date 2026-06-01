@@ -173,6 +173,7 @@ export default function Inventory({
 
   const openEditModal = (product: Product) => {
     setEditingProduct(product);
+    const rawTax = product.taxRate !== undefined && product.taxRate !== null ? product.taxRate : 0.18;
     setEditProductForm({
       name: product.name,
       sku: product.sku,
@@ -183,7 +184,7 @@ export default function Inventory({
       category: product.category,
       warehouseId: product.warehouseId,
       description: product.description || '',
-      taxRate: String(Math.round((product.taxRate || 0.18) * 100))
+      taxRate: parseFloat((rawTax * 100).toFixed(4)).toString()
     });
     setShowEditModal(true);
   };
@@ -664,12 +665,13 @@ export default function Inventory({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-gray-600 font-semibold mb-1">Costo Unitario de Adquisición ($) *</label>
                   <input
                     type="number"
-                    min={0.1}
+                    min="0"
+                    step="0.01"
                     placeholder="120"
                     value={newProduct.cost}
                     onChange={(e) => setNewProduct({ ...newProduct, cost: e.target.value })}
@@ -681,7 +683,8 @@ export default function Inventory({
                   <label className="block text-gray-600 font-semibold mb-1">Precio Público de Venta ($) *</label>
                   <input
                     type="number"
-                    min={0.1}
+                    min="0"
+                    step="0.01"
                     placeholder="350"
                     value={newProduct.price}
                     onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
@@ -821,7 +824,8 @@ export default function Inventory({
                   <label className="block text-gray-600 font-semibold mb-1">Costo de Adquisición ($) *</label>
                   <input
                     type="number"
-                    min={0.1}
+                    min="0"
+                    step="0.01"
                     value={editProductForm.cost}
                     onChange={(e) => setEditProductForm({ ...editProductForm, cost: e.target.value })}
                     className="w-full bg-slate-50 border border-gray-300 rounded px-2.5 py-2 outline-none focus:border-alegra-primary"
@@ -832,7 +836,8 @@ export default function Inventory({
                   <label className="block text-gray-600 font-semibold mb-1">Precio de Venta ($) *</label>
                   <input
                     type="number"
-                    min={0.1}
+                    min="0"
+                    step="0.01"
                     value={editProductForm.price}
                     onChange={(e) => setEditProductForm({ ...editProductForm, price: e.target.value })}
                     className="w-full bg-slate-50 border border-gray-300 rounded px-2.5 py-2 outline-none focus:border-alegra-primary"

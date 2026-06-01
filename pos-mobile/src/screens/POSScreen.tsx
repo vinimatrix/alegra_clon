@@ -278,7 +278,7 @@ export default function POSScreen({ onLogout }: { onLogout: () => void }) {
           taxes: tax,
           total,
           waiterName: currentWaiter?.name || 'Mesero Móvil',
-          createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          createdAt: `${new Date().toISOString().split('T')[0]} ${new Date().toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', hour12: false })}`
         };
         await mobileApi.createOrder(newOrder);
         // Set table as occupied
