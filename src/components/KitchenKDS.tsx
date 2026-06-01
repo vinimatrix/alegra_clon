@@ -24,7 +24,11 @@ import {
   Search,
   Timer,
   Settings,
-  Sliders
+  Sliders,
+  Copy,
+  Lock,
+  RefreshCw,
+  Database
 } from 'lucide-react';
 import { RestaurantTable, RestaurantOrder, RestaurantOrderItem, Product } from '../types';
 
@@ -70,6 +74,122 @@ export default function KitchenKDS({
     return saved !== null ? parseInt(saved, 10) : 12;
   });
   const [showSettings, setShowSettings] = useState<boolean>(false);
+
+  // Web Push and Service Worker registration references
+  const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
+  const [fcmToken, setFcmToken] = useState<string>(() => {
+    return localStorage.getItem('kds_fcm_token') || `fcm-token-${Math.random().toString(36).substring(2, 12)}-dev`;
+  });
+  const [fcmApiKey, setFcmApiKey] = useState<string>(() => localStorage.getItem('kds_fcm_api_key') || 'AIzaSyA4x_KDS_FCM_MOCK_KEY_7849');
+  const [fcmSenderId, setFcmSenderId] = useState<string>(() => localStorage.getItem('kds_fcm_sender_id') || '452148753265');
+  const [fcmAppId, setFcmAppId] = useState<string>(() => localStorage.getItem('kds_fcm_app_id') || '1:452148753265:web:6e32d5f818b2');
+  const [fcmProjectId, setFcmProjectId] = useState<string>(() => localStorage.getItem('kds_fcm_project_id') || 'alegra-kds-notificaciones');
+  
+  const [testNotificationTitle, setTestNotificationTitle] = useState('🍳 Alerta de Comanda - KDS');
+  const [testNotificationBody, setTestNotificationBody] = useState('Pedido #1045 - 2x Mofongo con Carne frita, 1x Jugo de Chinola');
+  const [testDelaySeconds, setTestDelaySeconds] = useState(5);
+  const [isSimulatingPush, setIsSimulatingPush] = useState(false);
+  const [showFcmAdvanced, setShowFcmAdvanced] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState(false);
+
+  // Register the service worker under /sw.js
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => {
+          console.log('KDS Service Worker registrado con éxito:', reg);
+          setSwRegistration(reg);
+          if (reg.pushManager) {
+            reg.pushManager.getSubscription()
+              .then(sub => {
+                if (sub) {
+                  const parsedToken = btoa(JSON.stringify(sub)).substring(0, 48);
+                  setFcmToken(`fcm-webpush-${parsedToken}`);
+                }
+              });
+          }
+        })
+        .catch(err => {
+          console.error('Error al registrar Service Worker en KDS:', err);
+        });
+    }
+  }, []);
+
+  // Sync preferences to localStorage on change
+  useEffect(() => {
+    localStorage.setItem('kds_fcm_token', fcmToken);
+  }, [fcmToken]);
+
+  useEffect(() => {
+    localStorage.setItem('kds_fcm_api_key', fcmApiKey);
+  }, [fcmApiKey]);
+
+  useEffect(() => {
+    localStorage.setItem('kds_fcm_sender_id', fcmSenderId);
+  }, [fcmSenderId]);
+
+  useEffect(() => {
+    localStorage.setItem('kds_fcm_app_id', fcmAppId);
+  }, [fcmAppId]);
+
+  useEffect(() => {
+    localStorage.setItem('kds_fcm_project_id', fcmProjectId);
+  }, [fcmProjectId]);
+
+  const handleCopyFcmToken = () => {
+    try {
+      navigator.clipboard.writeText(fcmToken);
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 2000);
+    } catch (e) {
+      console.warn('Failed to copy token:', e);
+    }
+  };
+
+  const handleTriggerTestPush = () => {
+    if (!('Notification' in window)) {
+      alert('Este navegador no soporta notificaciones de sistema.');
+      return;
+    }
+
+    if (Notification.permission !== 'granted') {
+      alert('Primero debe otorgar permisos de notificación haciendo clic en "Habilitar Push en Navegador".');
+      return;
+    }
+
+    setIsSimulatingPush(true);
+
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      // Background Service Worker testing
+      setTimeout(() => {
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'SIMULATE_PUSH',
+            payload: {
+              title: testNotificationTitle,
+              body: testNotificationBody,
+              tag: `fcm-simulate-${Date.now()}`
+            }
+          });
+        }
+        setIsSimulatingPush(false);
+      }, testDelaySeconds * 1000);
+    } else {
+      // In-page fallback simulation
+      setTimeout(() => {
+        try {
+          new Notification(testNotificationTitle, {
+            body: testNotificationBody,
+            icon: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=128&q=80',
+            requireInteraction: true
+          });
+        } catch (err) {
+          console.warn('Local Notification fallback failed:', err);
+        }
+        setIsSimulatingPush(false);
+      }, testDelaySeconds * 1000);
+    }
+  };
   
   // Tab view filters
   const [statusFilter, setStatusFilter] = useState<'pending_prep' | 'all'>('pending_prep');
@@ -673,6 +793,189 @@ export default function KitchenKDS({
                       ⚠ Los pedidos que excedan los {delayMinutesThreshold} minutos destellarán en fondo carmesí con alertas de urgencia visual.
                     </div>
                   )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Seccion de Firebase Cloud Messaging y Web Push Notificaciones */}
+          <div className="mt-5 pt-5 border-t border-gray-200/85 text-left">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+              <div className="space-y-1 max-w-2xl">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-2 w-2 rounded-full bg-indigo-600 animate-pulse"></span>
+                  <h4 className="text-sm font-black text-slate-900 flex items-center gap-1.5 uppercase tracking-wider">
+                    🔥 Integración Firebase Cloud Messaging (FCM) & Web Push
+                  </h4>
+                </div>
+                <p className="text-[11px] leading-relaxed text-gray-550">
+                  Permite sincronizar y alertar sobre pedidos nuevos usando el protocolo de notificaciones de sistema. Copie el token del dispositivo para registrarlo en su panel de administración o pruebe el envío en segundo plano.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFcmAdvanced(!showFcmAdvanced)}
+                className="px-3 py-1.5 bg-white hover:bg-slate-50 text-[10.5px] font-bold text-indigo-700 border border-indigo-200 rounded-lg flex items-center gap-1.5 self-start lg:self-center transition-all cursor-pointer whitespace-nowrap uppercase tracking-wider"
+              >
+                <Settings size={12} className={showFcmAdvanced ? 'rotate-45' : ''} />
+                {showFcmAdvanced ? 'Ocultar Credenciales' : 'Editar Credenciales FCM'}
+              </button>
+            </div>
+
+            {/* Credenciales de Firebase Cloud Messaging */}
+            <AnimatePresence>
+              {showFcmAdvanced && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden mt-4 grid grid-cols-1 md:grid-cols-4 gap-3 bg-white p-4 rounded-xl border border-gray-200"
+                >
+                  <div className="col-span-1 md:col-span-4 pb-1 border-b border-gray-100 flex items-center gap-2">
+                    <Database size={13} className="text-amber-500" />
+                    <span className="font-extrabold text-[10.5px] text-slate-800 uppercase tracking-wider">Credenciales de Proyecto Firebase</span>
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <label className="block text-[9.5px] font-bold text-gray-400 uppercase">PROJECT ID</label>
+                    <input
+                      type="text"
+                      value={fcmProjectId}
+                      onChange={(e) => setFcmProjectId(e.target.value)}
+                      className="w-full bg-slate-50 border border-gray-200 font-mono p-1.5 rounded text-[10.5px] outline-none text-slate-800 focus:border-indigo-300"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[9.5px] font-bold text-gray-400 uppercase font-sans">API KEY</label>
+                    <input
+                      type="password"
+                      value={fcmApiKey}
+                      onChange={(e) => setFcmApiKey(e.target.value)}
+                      className="w-full bg-slate-50 border border-gray-200 font-mono p-1.5 rounded text-[10.5px] outline-none text-slate-800 focus:border-indigo-305 focus:border-indigo-300"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[9.5px] font-bold text-gray-400 uppercase font-sans font-sans">MESSAGING SENDER ID</label>
+                    <input
+                      type="text"
+                      value={fcmSenderId}
+                      onChange={(e) => setFcmSenderId(e.target.value)}
+                      className="w-full bg-slate-50 border border-gray-200 font-mono p-1.5 rounded text-[10.5px] outline-none text-slate-800 focus:border-indigo-300"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[9.5px] font-bold text-gray-400 uppercase">APP ID</label>
+                    <input
+                      type="text"
+                      value={fcmAppId}
+                      onChange={(e) => setFcmAppId(e.target.value)}
+                      className="w-full bg-slate-50 border border-gray-200 font-mono p-1.5 rounded text-[10.5px] outline-none text-slate-800 focus:border-indigo-300"
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Token de Registro único */}
+              <div className="lg:col-span-2 space-y-2 bg-slate-100/50 p-4 rounded-xl border border-gray-200 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-[10px] text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                      <Lock size={11} className="text-indigo-600" /> Device Registration Token (FCM / Web Push / Device ID)
+                    </span>
+                    <span className="text-[9px] text-gray-450 font-bold font-mono">Sincronizado</span>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1 pb-1">
+                    Registre este token en su API / Backend del restaurante para enviar alertas push a este dispositivo al ingresar pedidos.
+                  </p>
+                </div>
+
+                <div className="mt-2 flex gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={fcmToken}
+                    className="flex-1 bg-white border border-gray-200 font-mono p-2 rounded-lg text-[10.5px] text-slate-700 select-all outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCopyFcmToken}
+                    className={`px-3.5 py-2 font-bold rounded-lg text-[11px] flex items-center justify-center gap-1.5 cursor-pointer border transition-all whitespace-nowrap ${
+                      copyFeedback 
+                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm' 
+                        : 'bg-indigo-600 hover:bg-indigo-700 border-indigo-600 text-white shadow-sm'
+                    }`}
+                  >
+                    {copyFeedback ? <Check size={13} /> : <Copy size={13} />}
+                    <span>{copyFeedback ? 'Copiado!' : 'Copiar Token'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Simulador de Envío Cloud en segundo plano */}
+              <div className="space-y-2.5 bg-stone-50 p-4 rounded-xl border border-gray-200 text-[11px]">
+                <div className="flex items-center gap-1.5 border-b border-gray-250 pb-1.5 justify-between">
+                  <span className="font-extrabold text-[10.5px] text-amber-900 uppercase tracking-wider">🎛 Banco de Pruebas KDS</span>
+                  <span className="bg-amber-100 text-amber-950 px-1.5 py-0.2 rounded text-[8.5px] font-extrabold uppercase font-mono">Simulación</span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="space-y-0.5">
+                    <span className="text-[9.5px] text-gray-400 font-bold uppercase">Título de Notificación</span>
+                    <input
+                      type="text"
+                      value={testNotificationTitle}
+                      onChange={(e) => setTestNotificationTitle(e.target.value)}
+                      className="w-full bg-white border border-gray-200 font-bold p-1 rounded text-[10.5px] outline-none text-slate-800"
+                    />
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <span className="text-[9.5px] text-gray-400 font-bold uppercase">Detalle del Pedido</span>
+                    <input
+                      type="text"
+                      value={testNotificationBody}
+                      onChange={(e) => setTestNotificationBody(e.target.value)}
+                      className="w-full bg-white border border-gray-250 p-1 rounded text-[10.5px] outline-none text-slate-800"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[9.5px] text-gray-400 font-bold uppercase font-sans">Espera:</span>
+                      <select
+                        value={testDelaySeconds}
+                        onChange={(e) => setTestDelaySeconds(parseInt(e.target.value, 10))}
+                        className="bg-white border border-gray-200 font-extrabold rounded p-1 text-[10px] outline-none"
+                      >
+                        <option value={3}>3 segundos</option>
+                        <option value={5}>5 segundos</option>
+                        <option value={10}>10 segundos</option>
+                      </select>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isSimulatingPush}
+                      onClick={handleTriggerTestPush}
+                      className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded text-[10px] uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {isSimulatingPush ? (
+                        <span className="flex items-center gap-1">
+                          <RefreshCw size={10} className="animate-spin" /> Programado
+                        </span>
+                      ) : (
+                        'Probar en 2do Plano'
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-amber-900 leading-tight mt-1 bg-amber-50/50 border border-amber-100 p-1.5 rounded-lg font-medium">
+                    💡 Presione el botón y minimice/ponga en segundo plano de inmediato esta pestaña para ver que el service worker despache alertas reales.
+                  </p>
                 </div>
               </div>
             </div>

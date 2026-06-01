@@ -153,6 +153,99 @@ export default function App() {
     initData();
   }, []);
 
+  // Supabase Real-time postgres changes listener
+  useEffect(() => {
+    if (!isSupabaseActive()) return;
+
+    let ordersChannel: any = null;
+    let tablesChannel: any = null;
+
+    const setupRealtime = async () => {
+      const { supabase } = await import('./services/supabaseClient');
+      const { toCamelCase } = await import('./services/api');
+
+      ordersChannel = supabase
+        .channel('realtime_kds_orders')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'orders' },
+          (payload: any) => {
+            console.log('⚡ [Realtime Supabase] Evento de Orden:', payload);
+            
+            if (payload.eventType === 'INSERT') {
+              const newOrder = toCamelCase(payload.new);
+              setOrders((prev) => {
+                const exists = prev.some((o) => o.id === newOrder.id);
+                if (exists) return prev;
+                
+                // Despachar notificación nativa de Navegador para alerta de cocina
+                if ('Notification' in window && Notification.permission === 'granted') {
+                  try {
+                    new Notification(`👨‍🍳 Nueva Comanda: Mesa ${newOrder.tableName || 'Mostrador'}`, {
+                      body: `Pedido #${newOrder.id.substring(0, 6)} • Modo: ${newOrder.orderMode || 'Salón'}`,
+                      icon: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=128&q=80',
+                      requireInteraction: true,
+                    });
+                  } catch (e) {
+                    console.warn('Fallo al despachar notificación de comando en tiempo real:', e);
+                  }
+                }
+                return [newOrder, ...prev];
+              });
+            } else if (payload.eventType === 'UPDATE') {
+              const updatedOrder = toCamelCase(payload.new);
+              setOrders((prev) =>
+                prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o))
+              );
+            } else if (payload.eventType === 'DELETE') {
+              const deletedId = payload.old.id;
+              setOrders((prev) => prev.filter((o) => o.id !== deletedId));
+            }
+          }
+        )
+        .subscribe();
+
+      tablesChannel = supabase
+        .channel('realtime_kds_tables')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'tables' },
+          (payload: any) => {
+            console.log('⚡ [Realtime Supabase] Evento de Mesa:', payload);
+            if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+              const tableItem = toCamelCase(payload.new);
+              setTables((prev) => {
+                const exists = prev.some((t) => t.id === tableItem.id);
+                if (exists) {
+                  return prev.map((t) => (t.id === tableItem.id ? tableItem : t));
+                }
+                return [...prev, tableItem];
+              });
+            } else if (payload.eventType === 'DELETE') {
+              const deletedId = payload.old.id;
+              setTables((prev) => prev.filter((t) => t.id !== deletedId));
+            }
+          }
+        )
+        .subscribe();
+    };
+
+    setupRealtime();
+
+    return () => {
+      if (ordersChannel) {
+        import('./services/supabaseClient').then(({ supabase }) => {
+          supabase.removeChannel(ordersChannel);
+        });
+      }
+      if (tablesChannel) {
+        import('./services/supabaseClient').then(({ supabase }) => {
+          supabase.removeChannel(tablesChannel);
+        });
+      }
+    };
+  }, []);
+
   // Effects to save state changes automatically
   useEffect(() => {
     saveLocalStorageState('alegra_products', products);

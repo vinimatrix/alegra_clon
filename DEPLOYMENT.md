@@ -128,10 +128,161 @@ npm run start
 
 ---
 
-## 🗃️ 4. Sincronización con Supabase (Opcional - Backend persistente)
+## 🗃️ 4. Sincronización con Supabase & Tiempo Real (Web & Móvil)
 
-Nuestra suite soporta tanto almacenamiento temporal inteligente local en el navegador como sincronización persistente mediante una base de datos Postgres de Supabase.
+Nuestra suite soporta tanto almacenamiento temporal inteligente local en el navegador como sincronización de base de datos **PostgreSQL de Supabase** con actualización inmediata bidireccional en tiempo real (**Supabase Realtime Channels**).
 
-1. Crea un proyecto gratuito en [Supabase](https://supabase.com/).
-2. Copia tus variables de conexión `API URL` y `Anon Key`.
-3. Agrégalas en el panel web ingresando a **Ajustes** dentro del sistema, o declarándolas como variables de entorno al desplegar para que todos tus meseros y tablets KDS de cocina trabajen coordinados con el mismo inventario y órdenes de mesa en tiempo real.
+### A. Habilitar la replicación de tablas en Supabase
+Para que Supabase empuje cambios a través de Websockets en tiempo real, debes activar la replicación de las tablas `orders` y `tables`:
+1. Ve a tu panel de **Supabase**.
+2. Entra en **Database** -> **Replication**.
+3. En la replicación `supabase_realtime`, haz clic en **"Source"** (o cambia el switch) de las tablas **`orders`** y **`tables`** para activarlas en tiempo real.
+
+---
+
+## ⚡ 5. Configuración de Notificaciones Push & Realtime en la App Móvil (`pos-mobile`)
+
+Para habilitar la sincronización en la app nativa y enviar notificaciones inmediatamente cuando la cocina despache una orden:
+
+### Paso 1: Instalar dependencias necesarias en la app móvil
+Ejecuta esto desde la terminal de la carpeta `pos-mobile`:
+```bash
+cd pos-mobile
+npx expo install @supabase/supabase-js expo-notifications expo-device
+```
+
+### Paso 2: Crear el cliente de Supabase en Móvil
+Crea un archivo llamado `src/services/supabaseMobile.ts`:
+```typescript
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = 'https://tu-proyecto.supabase.co';
+const SUPABASE_ANON_KEY = 'tu-anon-key-de-supabase';
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+```
+
+### Paso 3: Configurar Notificaciones Push y Supabase Realtime en `App.tsx`
+Reemplaza el archivo central `/pos-mobile/App.tsx` con el siguiente código que solicita permisos para notificaciones del dispositivo en primer/segundo plano y se suscribe en tiempo real a las comandas de cocina:
+
+```typescript
+import { useEffect, useState, useRef } from 'react';
+import { Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+import { StatusBar } from 'expo-status-bar';
+import { supabase } from './src/services/supabaseMobile';
+import LoginScreen from './src/screens/LoginScreen';
+import POSScreen from './src/screens/POSScreen';
+
+// Configurar comportamiento para albergar notificaciones de alerta mientras la app está abierta
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
+export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [expoPushToken, setExpoPushToken] = useState('');
+  const notificationListener = useRef<any>();
+  const responseListener = useRef<any>();
+
+  // 1. Registro para Notificaciones Push Nativas
+  useEffect(() => {
+    registerForPushNotificationsAsync().then(token => {
+      if (token) setExpoPushToken(token);
+    });
+
+    // Listener para recibir notificaciones mientras la app está en primer plano
+    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+      console.log('Notificación recibida en vivo:', notification);
+    });
+
+    // Listener cuando el usuario hace clic en la notificación
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('Interacción con Notificación:', response);
+    });
+
+    return () => {
+      Notifications.removeNotificationSubscription(notificationListener.current);
+      Notifications.removeNotificationSubscription(responseListener.current);
+    };
+  }, []);
+
+  // 2. Escuchar cambios de Supabase Realtime sobre Comandas despachadas
+  useEffect(() => {
+    // Escucha inserciones de nuevas comandas o cambios de estado
+    const channel = supabase
+      .channel('mobile-orders-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, async (payload) => {
+        console.log('Comanda actualizada en base:', payload);
+        
+        // Si la comanda cambió de estado, alertamos al mesero/tablet
+        if (payload.eventType === 'UPDATE') {
+          const order = payload.new;
+          if (order.status === 'en_preparacion' || order.status === 'entregada') {
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: '👨‍🍳 Alerta de Cocina KDS',
+                body: `La comanda de la Mesa "${order.table_name || 'Mesa'}" está lista o en preparación!`,
+                data: { orderId: order.id },
+              },
+              trigger: null, // Envío inmediato local
+            });
+          }
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  return (
+    <>
+      <StatusBar style="auto" />
+      {isLoggedIn ? (
+        <POSScreen onLogout={() => setIsLoggedIn(false)} />
+      ) : (
+        <LoginScreen onLogin={() => setIsLoggedIn(true)} />
+      )}
+    </>
+  );
+}
+
+// Función auxiliar para obtener permisos del Sistema Operativo
+async function registerForPushNotificationsAsync() {
+  let token;
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Default KDS Channel',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#FF231F7C',
+    });
+  }
+
+  if (Device.isDevice) {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== 'granted') {
+      console.log('No se otorgaron permisos de notificación!');
+      return;
+    }
+    token = (await Notifications.getExpoPushTokenAsync()).data;
+    console.log('Expo Push Token del dispositivo:', token);
+  } else {
+    console.log('Debe probar las notificaciones push en un dispositivo móvil real.');
+  }
+
+  return token;
+}
+```
