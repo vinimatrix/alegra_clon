@@ -25,7 +25,8 @@ import {
   getLocalStorageState, saveLocalStorageState
 } from './lib/mockData';
 
-import { api, isSupabaseActive } from './services/api';
+import { api, isSupabaseActive, toCamelCase } from './services/api';
+import { supabase } from './services/supabaseClient';
 
 // Import subcomponents
 import Dashboard from './components/Dashboard';
@@ -157,92 +158,82 @@ export default function App() {
   useEffect(() => {
     if (!isSupabaseActive()) return;
 
-    let ordersChannel: any = null;
-    let tablesChannel: any = null;
+    // Generate unique channel names per hook installation to avoid callbacks-after-subscribe errors on fast re-renders
+    const randomSuffix = Math.random().toString(36).substring(2, 10);
+    const ordersChannelName = `kds_orders_channel_${randomSuffix}`;
+    const tablesChannelName = `kds_tables_channel_${randomSuffix}`;
 
-    const setupRealtime = async () => {
-      const { supabase } = await import('./services/supabaseClient');
-      const { toCamelCase } = await import('./services/api');
+    console.log(`🔌 [Realtime Supabase] Inicializando canales únicos: ${ordersChannelName}, ${tablesChannelName}`);
 
-      ordersChannel = supabase
-        .channel('realtime_kds_orders')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'orders' },
-          (payload: any) => {
-            console.log('⚡ [Realtime Supabase] Evento de Orden:', payload);
-            
-            if (payload.eventType === 'INSERT') {
-              const newOrder = toCamelCase(payload.new);
-              setOrders((prev) => {
-                const exists = prev.some((o) => o.id === newOrder.id);
-                if (exists) return prev;
-                
-                // Despachar notificación nativa de Navegador para alerta de cocina
-                if ('Notification' in window && Notification.permission === 'granted') {
-                  try {
-                    new Notification(`👨‍🍳 Nueva Comanda: Mesa ${newOrder.tableName || 'Mostrador'}`, {
-                      body: `Pedido #${newOrder.id.substring(0, 6)} • Modo: ${newOrder.orderMode || 'Salón'}`,
-                      icon: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=128&q=80',
-                      requireInteraction: true,
-                    });
-                  } catch (e) {
-                    console.warn('Fallo al despachar notificación de comando en tiempo real:', e);
-                  }
+    const ordersChannel = supabase
+      .channel(ordersChannelName)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders' },
+        (payload: any) => {
+          console.log('⚡ [Realtime Supabase] Evento de Orden:', payload);
+          
+          if (payload.eventType === 'INSERT') {
+            const newOrder = toCamelCase(payload.new);
+            setOrders((prev) => {
+              const exists = prev.some((o) => o.id === newOrder.id);
+              if (exists) return prev;
+              
+              // Despachar notificación nativa de Navegador para alerta de cocina
+              if ('Notification' in window && Notification.permission === 'granted') {
+                try {
+                  new Notification(`👨‍🍳 Nueva Comanda: Mesa ${newOrder.tableName || 'Mostrador'}`, {
+                    body: `Pedido #${newOrder.id.substring(0, 6)} • Modo: ${newOrder.orderMode || 'Salón'}`,
+                    icon: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=128&q=80',
+                    requireInteraction: true,
+                  });
+                } catch (e) {
+                  console.warn('Fallo al despachar notificación de comando en tiempo real:', e);
                 }
-                return [newOrder, ...prev];
-              });
-            } else if (payload.eventType === 'UPDATE') {
-              const updatedOrder = toCamelCase(payload.new);
-              setOrders((prev) =>
-                prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o))
-              );
-            } else if (payload.eventType === 'DELETE') {
-              const deletedId = payload.old.id;
-              setOrders((prev) => prev.filter((o) => o.id !== deletedId));
-            }
+              }
+              return [newOrder, ...prev];
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedOrder = toCamelCase(payload.new);
+            setOrders((prev) =>
+              prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o))
+            );
+          } else if (payload.eventType === 'DELETE') {
+            const deletedId = payload.old.id;
+            setOrders((prev) => prev.filter((o) => o.id !== deletedId));
           }
-        )
-        .subscribe();
+        }
+      )
+      .subscribe();
 
-      tablesChannel = supabase
-        .channel('realtime_kds_tables')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'tables' },
-          (payload: any) => {
-            console.log('⚡ [Realtime Supabase] Evento de Mesa:', payload);
-            if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-              const tableItem = toCamelCase(payload.new);
-              setTables((prev) => {
-                const exists = prev.some((t) => t.id === tableItem.id);
-                if (exists) {
-                  return prev.map((t) => (t.id === tableItem.id ? tableItem : t));
-                }
-                return [...prev, tableItem];
-              });
-            } else if (payload.eventType === 'DELETE') {
-              const deletedId = payload.old.id;
-              setTables((prev) => prev.filter((t) => t.id !== deletedId));
-            }
+    const tablesChannel = supabase
+      .channel(tablesChannelName)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tables' },
+        (payload: any) => {
+          console.log('⚡ [Realtime Supabase] Evento de Mesa:', payload);
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const tableItem = toCamelCase(payload.new);
+            setTables((prev) => {
+              const exists = prev.some((t) => t.id === tableItem.id);
+              if (exists) {
+                return prev.map((t) => (t.id === tableItem.id ? tableItem : t));
+              }
+              return [...prev, tableItem];
+            });
+          } else if (payload.eventType === 'DELETE') {
+            const deletedId = payload.old.id;
+            setTables((prev) => prev.filter((t) => t.id !== deletedId));
           }
-        )
-        .subscribe();
-    };
-
-    setupRealtime();
+        }
+      )
+      .subscribe();
 
     return () => {
-      if (ordersChannel) {
-        import('./services/supabaseClient').then(({ supabase }) => {
-          supabase.removeChannel(ordersChannel);
-        });
-      }
-      if (tablesChannel) {
-        import('./services/supabaseClient').then(({ supabase }) => {
-          supabase.removeChannel(tablesChannel);
-        });
-      }
+      console.log(`🔌 [Realtime Supabase] Desuscribiendo canales: ${ordersChannelName}, ${tablesChannelName}`);
+      supabase.removeChannel(ordersChannel);
+      supabase.removeChannel(tablesChannel);
     };
   }, []);
 
