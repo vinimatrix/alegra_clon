@@ -14,6 +14,7 @@ import {
   ChefHat, 
   Sparkles, 
   Bell, 
+  BellOff,
   AlertTriangle, 
   Filter, 
   Maximize2, 
@@ -21,7 +22,9 @@ import {
   CheckCircle2,
   UtensilsCrossed,
   Search,
-  Timer
+  Timer,
+  Settings,
+  Sliders
 } from 'lucide-react';
 import { RestaurantTable, RestaurantOrder, RestaurantOrderItem, Product } from '../types';
 
@@ -40,9 +43,33 @@ export default function KitchenKDS({
   onUpdateOrders, 
   onUpdateTables 
 }: KitchenKDSProps) {
-  // Sound and TTS preferences
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
-  const [ttsEnabled, setTtsEnabled] = useState<boolean>(true);
+  // Sound and TTS preferences initialized with localStorage persistence
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('kds_sound_enabled');
+    return saved !== null ? saved === 'true' : true;
+  });
+  const [soundType, setSoundType] = useState<string>(() => {
+    return localStorage.getItem('kds_sound_type') || 'standard';
+  });
+  const [soundVolume, setSoundVolume] = useState<number>(() => {
+    const saved = localStorage.getItem('kds_sound_volume');
+    return saved !== null ? parseFloat(saved) : 1.0;
+  });
+  const [ttsEnabled, setTtsEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('kds_tts_enabled');
+    return saved !== null ? saved === 'true' : true;
+  });
+  const [pushEnabled, setPushEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('kds_push_enabled') === 'true';
+  });
+  const [muteVisualDelays, setMuteVisualDelays] = useState<boolean>(() => {
+    return localStorage.getItem('kds_mute_visual_delays') === 'true';
+  });
+  const [delayMinutesThreshold, setDelayMinutesThreshold] = useState<number>(() => {
+    const saved = localStorage.getItem('kds_delay_threshold');
+    return saved !== null ? parseInt(saved, 10) : 12;
+  });
+  const [showSettings, setShowSettings] = useState<boolean>(false);
   
   // Tab view filters
   const [statusFilter, setStatusFilter] = useState<'pending_prep' | 'all'>('pending_prep');
@@ -62,27 +89,138 @@ export default function KitchenKDS({
   // Track checked/completed items list locally by 'orderId-productId-index' matching
   const [checkedItems, setCheckedItems] = useState<{ [key: string]: boolean }>({});
 
-  // Trigger audio alarm and text-to-speech for newly arrived orders
+  // Sync preferences to localStorage on change
+  useEffect(() => {
+    localStorage.setItem('kds_sound_enabled', String(soundEnabled));
+  }, [soundEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem('kds_sound_type', soundType);
+  }, [soundType]);
+
+  useEffect(() => {
+    localStorage.setItem('kds_sound_volume', String(soundVolume));
+  }, [soundVolume]);
+
+  useEffect(() => {
+    localStorage.setItem('kds_tts_enabled', String(ttsEnabled));
+  }, [ttsEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem('kds_push_enabled', String(pushEnabled));
+  }, [pushEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem('kds_mute_visual_delays', String(muteVisualDelays));
+  }, [muteVisualDelays]);
+
+  useEffect(() => {
+    localStorage.setItem('kds_delay_threshold', String(delayMinutesThreshold));
+  }, [delayMinutesThreshold]);
+
+  // Pure Web Audio API synthesis engine with 4 custom kitchen tones
+  const playSynthesisSound = (type: string, volume: number) => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const gainNode = audioCtx.createGain();
+      // Master scale back to prevent clipping/loudness spikes
+      gainNode.gain.setValueAtTime(volume * 0.12, audioCtx.currentTime);
+      gainNode.connect(audioCtx.destination);
+
+      if (type === 'standard') {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+        osc.connect(gainNode);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.25);
+      } else if (type === 'bell') {
+        // Kitchen order bell "ding!"
+        const osc = audioCtx.createOscillator();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(1500, audioCtx.currentTime);
+        
+        gainNode.gain.setValueAtTime(volume * 0.22, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+        
+        osc.connect(gainNode);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.6);
+      } else if (type === 'chime') {
+        // Chime chord dual sound
+        const osc1 = audioCtx.createOscillator();
+        const osc2 = audioCtx.createOscillator();
+        osc1.type = 'sine';
+        osc2.type = 'sine';
+        osc1.frequency.setValueAtTime(659.25, audioCtx.currentTime); // E5
+        osc2.frequency.setValueAtTime(880.00, audioCtx.currentTime); // A5
+
+        gainNode.gain.setValueAtTime(volume * 0.1, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.9);
+
+        osc1.connect(gainNode);
+        osc2.connect(gainNode);
+        osc1.start();
+        osc2.start();
+        osc1.stop(audioCtx.currentTime + 0.9);
+        osc2.stop(audioCtx.currentTime + 0.9);
+      } else if (type === 'scifi') {
+        // High density visual upward frequency sweep
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(320, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(950, audioCtx.currentTime + 0.3);
+        
+        gainNode.gain.setValueAtTime(volume * 0.04, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+
+        osc.connect(gainNode);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.3);
+      }
+    } catch (e) {
+      console.warn('AudioContext synth sound failed:', e);
+    }
+  };
+
+  // Live request and toggle browser desktop push notifications
+  const handleTogglePushNotifications = () => {
+    if (!('Notification' in window)) {
+      alert('Las notificaciones push no son soportadas por este explorador.');
+      return;
+    }
+    
+    if (Notification.permission === 'granted') {
+      const nextVal = !pushEnabled;
+      setPushEnabled(nextVal);
+    } else if (Notification.permission !== 'denied') {
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          setPushEnabled(true);
+          try {
+            new Notification('🍳 KDS Alertas Activas', {
+              body: 'Recibirá notificaciones push en tiempo real para las comandas.',
+            });
+          } catch (e) {
+            console.warn('Feedback notification failed', e);
+          }
+        } else {
+          setPushEnabled(false);
+        }
+      });
+    } else {
+      alert('Permiso de notificaciones denegado. Actívelas en la barra de direcciones de su navegador.');
+    }
+  };
+
+  // Trigger audio alarm, text-to-speech, and desktop push notifications for newly arrived orders
   useEffect(() => {
     const activeNewOrders = orders.filter(o => o.status === 'pendiente' && !knownOrderIds.includes(o.id));
     
     if (activeNewOrders.length > 0) {
-      // Play system alert beep
+      // Play customizable synthesized sound
       if (soundEnabled) {
-        try {
-          const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const oscillator = audioCtx.createOscillator();
-          const gainNode = audioCtx.createGain();
-          oscillator.type = 'sine';
-          oscillator.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5 note
-          gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime);
-          oscillator.connect(gainNode);
-          gainNode.connect(audioCtx.destination);
-          oscillator.start();
-          oscillator.stop(audioCtx.currentTime + 0.25);
-        } catch (e) {
-          console.warn('AudioContext beep blocked by browser interactions:', e);
-        }
+        playSynthesisSound(soundType, soundVolume);
       }
 
       // Play elegant TTS announcement
@@ -107,10 +245,27 @@ export default function KitchenKDS({
         });
       }
 
+      // Push real HTML5 Desktop Notification
+      if (pushEnabled && 'Notification' in window && Notification.permission === 'granted') {
+        activeNewOrders.forEach(order => {
+          const mode = order.tableId.startsWith('pos-quick') ? 'Llevar' : 'Mesa';
+          const itemsDesc = order.items.map(i => `${i.quantity}x ${i.name}`).join(', ');
+          try {
+            new Notification(`🍳 Orden Recibida: ${order.tableName} (${mode})`, {
+              body: `Productos: ${itemsDesc}`,
+              tag: `order-${order.id}`,
+              requireInteraction: false
+            });
+          } catch (e) {
+            console.warn('Browser push notification blocked or error:', e);
+          }
+        });
+      }
+
       // Record this order as known
       setKnownOrderIds(prev => [...prev, ...activeNewOrders.map(o => o.id)]);
     }
-  }, [orders, knownOrderIds, soundEnabled, ttsEnabled]);
+  }, [orders, knownOrderIds, soundEnabled, soundType, soundVolume, ttsEnabled, pushEnabled]);
 
   // Handle Fullscreen toggle
   const toggleFullScreen = () => {
@@ -166,10 +321,12 @@ export default function KitchenKDS({
 
   // Status-based formatting
   const getTimerBadgeStyle = (minutes: number) => {
-    if (minutes >= 12) {
-      return "bg-rose-500 text-white animate-pulse font-black";
+    if (minutes >= delayMinutesThreshold) {
+      return muteVisualDelays 
+        ? "bg-slate-800 text-gray-300 font-bold" 
+        : "bg-rose-500 text-white animate-pulse font-black";
     }
-    if (minutes >= 7) {
+    if (minutes >= Math.floor(delayMinutesThreshold * 0.6)) {
       return "bg-amber-500 text-slate-950 font-bold";
     }
     return "bg-slate-800 text-gray-300 font-medium";
@@ -269,7 +426,7 @@ export default function KitchenKDS({
   const countReady = orders.filter(o => o.status === 'entregada').length;
   const countDelayed = orders.filter(o => {
     if (o.status === 'cobrada' || o.status === 'entregada') return false;
-    return getElapsedMinutes(o.createdAt) >= 12;
+    return getElapsedMinutes(o.createdAt) >= delayMinutesThreshold;
   }).length;
 
   return (
@@ -296,38 +453,25 @@ export default function KitchenKDS({
             </p>
           </div>
         </div>
-
-        {/* Audio Alerts & Voice Synthesis Controls */}
+            {/* Audio Alerts & Voice Synthesis Controls */}
         <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
           <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
+            onClick={() => setShowSettings(!showSettings)}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
-              soundEnabled 
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
-                : 'bg-gray-100 text-gray-400 border-gray-250 line-through'
+              showSettings 
+                ? 'bg-indigo-650 bg-indigo-600 text-white border-indigo-600 shadow-sm' 
+                : 'bg-white hover:bg-slate-50 text-slate-700 border-gray-250'
             }`}
-            title="Activar pitido para nuevos comandas"
+            title="Configuración de sonido, voz y alertas de atraso"
           >
-            {soundEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />}
-            <span>Timbre de Entrada</span>
+            <Settings size={13} className={showSettings ? 'animate-spin' : ''} />
+            <span>Ajustes de Alertas ({pushEnabled ? 'Push + 🔉' : '🔉'})</span>
           </button>
 
           <button
-            onClick={() => setTtsEnabled(!ttsEnabled)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
-              ttsEnabled 
-                ? 'bg-purple-50 text-purple-700 border-purple-200' 
-                : 'bg-gray-100 text-gray-400 border-gray-250 line-through'
-            }`}
-            title="Sintetizar locución de platos entrantes"
-          >
-            <Sparkles size={13} className={ttsEnabled ? 'text-purple-650' : 'text-gray-400'} />
-            <span>Voz de Entrada (TTS)</span>
-          </button>
-
-          <button
+            type="button"
             onClick={toggleFullScreen}
-            className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-slate-800 ml-1 shadow-sm transition-all"
+            className="bg-slate-905 bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-slate-850 shadow-sm transition-all"
           >
             {isFullScreen ? (
               <>
@@ -343,6 +487,198 @@ export default function KitchenKDS({
           </button>
         </div>
       </div>
+
+      {/* KDS Settings Panel */}
+      {showSettings && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          className="bg-slate-50 border border-gray-250 rounded-2xl p-4 md:p-5 shadow-xs text-xs text-slate-800 space-y-4 text-left"
+          id="kds-settings-configuration-panel"
+        >
+          <div className="flex items-center justify-between border-b border-gray-200 pb-2.5">
+            <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+              <Sliders size={16} className="text-indigo-600" />
+              Panel de Configuración de Alertas del Cocinero
+            </h3>
+            <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-bold uppercase tracking-wider font-mono">
+              Preferencias Locales
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Col 1: Audio Beep Configuration */}
+            <div className="space-y-3.5 bg-white p-3.5 rounded-xl border border-gray-200">
+              <div className="flex items-center gap-1.5 border-b border-gray-100 pb-2">
+                <Volume2 size={15} className="text-indigo-600" />
+                <span className="font-extrabold text-slate-900 uppercase text-[10px] tracking-wider">Timbres y Tonos</span>
+              </div>
+              
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={soundEnabled}
+                    onChange={(e) => setSoundEnabled(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 focus:ring-1 cursor-pointer"
+                  />
+                  <span className="font-bold text-gray-750">Activar Timbre de Entrada</span>
+                </label>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] text-gray-400 font-extrabold uppercase">Seleccionar Tono</span>
+                  <select
+                    value={soundType}
+                    disabled={!soundEnabled}
+                    onChange={(e) => setSoundType(e.target.value)}
+                    className="w-full bg-slate-50 border border-gray-200 font-bold p-2 rounded-lg text-xs outline-none disabled:opacity-50 text-slate-850"
+                  >
+                    <option value="standard">Pitido Clásico (Beep)</option>
+                    <option value="bell">Campana de Cocina (Ding!)</option>
+                    <option value="chime">Chime Armonioso (Chord)</option>
+                    <option value="scifi">Ascenso Sónico (Sweep)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-gray-400 font-extrabold uppercase">Volumen</span>
+                    <span className="font-mono font-bold text-indigo-600">{Math.round(soundVolume * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={soundVolume}
+                    disabled={!soundEnabled}
+                    onChange={(e) => setSoundVolume(parseFloat(e.target.value))}
+                    className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 disabled:opacity-50"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => playSynthesisSound(soundType, soundVolume)}
+                  disabled={!soundEnabled}
+                  className="w-full py-1.5 px-3 bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold rounded-lg text-[10px] hover:bg-indigo-100 disabled:opacity-50 flex items-center justify-center gap-1 cursor-pointer transition-all uppercase tracking-wider"
+                >
+                  <Play size={10} fill="currentColor" /> Probar Tono
+                </button>
+              </div>
+            </div>
+
+            {/* Col 2: Voice Synthesis & Push Notifications */}
+            <div className="space-y-3.5 bg-white p-3.5 rounded-xl border border-gray-200">
+              <div className="flex items-center gap-1.5 border-b border-gray-100 pb-2">
+                <Bell size={15} className="text-indigo-600" />
+                <span className="font-extrabold text-slate-900 uppercase text-[10px] tracking-wider">Voz y Notificaciones Push</span>
+              </div>
+
+              <div className="space-y-4">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={ttsEnabled}
+                    onChange={(e) => setTtsEnabled(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 focus:ring-1 cursor-pointer"
+                  />
+                  <span className="font-bold text-gray-750">Lectura por Voz (TTS - Español)</span>
+                </label>
+                <p className="text-[10px] text-gray-400 leading-normal pl-6">
+                  Sintetiza la lectura de comandas nuevas por altavoz con el desglose de productos.
+                </p>
+
+                <div className="border-t border-gray-100 pt-3 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-gray-750">Notificaciones de Escritorio (Push)</span>
+                    <span className={`text-[9.5px] px-2 py-0.5 rounded uppercase font-mono font-bold ${
+                      pushEnabled
+                        ? 'bg-emerald-105 bg-emerald-100 text-emerald-800'
+                        : 'bg-gray-100 text-gray-450'
+                    }`}>
+                      {pushEnabled ? 'Activo' : 'Inactivo'}
+                    </span>
+                  </div>
+                  
+                  <button
+                    type="button"
+                    onClick={handleTogglePushNotifications}
+                    className={`w-full py-2 px-3 font-bold rounded-lg text-[10px] flex items-center justify-center gap-1.5 cursor-pointer border transition-all uppercase tracking-wider ${
+                      pushEnabled
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                        : 'bg-white hover:bg-slate-50 text-gray-700 border-gray-250'
+                    }`}
+                  >
+                    {pushEnabled ? <BellOff size={11} /> : <Bell size={11} />}
+                    {pushEnabled ? 'Desactivar Push' : 'Habilitar Push en Navegador'}
+                  </button>
+                  <p className="text-[9.5px] text-gray-450 leading-relaxed">
+                    Reciba alertas emergentes en su escritorio en tiempo real cuando se levante comanda nueva.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Col 3: Visual alerts and Late tickets muting */}
+            <div className="space-y-3.5 bg-white p-3.5 rounded-xl border border-gray-200">
+              <div className="flex items-center gap-1.5 border-b border-gray-100 pb-2">
+                <AlertTriangle size={15} className="text-amber-500" />
+                <span className="font-extrabold text-slate-900 uppercase text-[10px] tracking-wider">Alertas de Retraso de Comandas</span>
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <label className="font-extrabold text-[10px] text-slate-800 uppercase">Minutos para Considerar Atraso</label>
+                    <span className="font-mono bg-amber-50 px-1.5 rounded text-amber-850 font-bold">{delayMinutesThreshold}m</span>
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={delayMinutesThreshold}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      if (!isNaN(v) && v > 0) setDelayMinutesThreshold(v);
+                    }}
+                    className="w-full bg-slate-50 border border-gray-200 font-bold p-2 rounded-lg text-xs outline-none text-slate-800"
+                    placeholder="Minutos de tolerancia..."
+                  />
+                </div>
+
+                <div className="border-t border-gray-100 pt-3 space-y-2">
+                  <label className="flex items-start gap-2.5 cursor-pointer pb-1.5 select-none">
+                    <input
+                      type="checkbox"
+                      checked={muteVisualDelays}
+                      onChange={(e) => setMuteVisualDelays(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 focus:ring-1 mt-0.5 cursor-pointer"
+                    />
+                    <div className="leading-snug">
+                      <span className="font-black text-slate-800 block text-[11px]">🔇 Silenciar Alertas Visuales</span>
+                      <span className="text-[10px] text-gray-550 font-medium block mt-0.5">
+                        Apaga el parpadeo pulsante intermitente carmesí y bordes de tickets atrasados para una vista más limpia.
+                      </span>
+                    </div>
+                  </label>
+                  
+                  {muteVisualDelays ? (
+                    <div className="bg-amber-50 border border-amber-100 p-2.5 rounded-lg text-[9.5px] font-bold text-amber-900">
+                      🔇 El parpadeo visual en carmesí para comandas retrasadas está apagado. Los tickets mantendrán sus colores de estado limpios.
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 p-2.5 rounded-lg text-[9.5px] leading-relaxed text-gray-500 font-medium">
+                      ⚠ Los pedidos que excedan los {delayMinutesThreshold} minutos destellarán en fondo carmesí con alertas de urgencia visual.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Real-time KPI & Alarm Center Banner */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -376,7 +712,7 @@ export default function KitchenKDS({
             : 'bg-white border-gray-200 text-slate-800'
         }`}>
           <div className="space-y-0.5">
-            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Retrasadas (+12 min)</span>
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Retrasadas (+{delayMinutesThreshold} min)</span>
             <span className={`text-xl font-black font-mono block leading-none ${countDelayed > 0 ? 'text-rose-650' : 'text-slate-800'}`}>{countDelayed}</span>
           </div>
           {countDelayed > 0 ? (
@@ -487,8 +823,8 @@ export default function KitchenKDS({
                 titleColor = "text-emerald-900";
               }
 
-              // Color critical delay if >=12 mins
-              if (minutesElapsed >= 12 && order.status !== 'entregada') {
+              // Color critical delay if >= delayMinutesThreshold mins (and visual alert is not muted)
+              if (minutesElapsed >= delayMinutesThreshold && !muteVisualDelays && order.status !== 'entregada') {
                 borderStyle = "border-rose-450 shadow-rose-300/20 shadow-md bg-stone-50/20 animate-pulse";
                 headerTint = "bg-rose-50 text-rose-900";
               }

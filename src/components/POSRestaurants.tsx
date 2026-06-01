@@ -31,6 +31,7 @@ import {
   ChefHat
 } from 'lucide-react';
 import KitchenKDS from './KitchenKDS';
+import InvoicePrinterModal from './InvoicePrinterModal';
 import { Product, Client, RestaurantTable, RestaurantOrder, Invoice, CashSession, CajaClosureHistory } from '../types';
 
 interface POSRestaurantsProps {
@@ -1563,63 +1564,11 @@ export default function POSRestaurants({
        * RECEIPT PRINTER THERMAL MODAL PREVIEW
        *******************************************************/
       lastReceipt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs" id="thermal-receipt-modal">
-          <div className="bg-white w-full max-w-sm rounded-xl shadow-xl p-5 border border-gray-150 flex flex-col space-y-4">
-            <div className="border-b-2 border-dashed border-gray-300 pb-3 text-center text-xs text-gray-600">
-              <h3 className="font-extrabold text-sm uppercase text-gray-900 tracking-wider font-display">*** RECIBO DE PAGO ***</h3>
-              <p className="font-bold text-blue-600 mt-1">ALEGRA CLONE TICKET-POS</p>
-              <p className="font-mono mt-0.5">RNC: 101-54321-1</p>
-              <p className="font-mono text-[10px]">Cajero: #0012 | Santo Domingo</p>
-            </div>
-
-            <div className="text-[11px] font-mono text-gray-700 space-y-1">
-              <p><span>TICKET:</span> <span className="font-bold">{lastReceipt.invoiceNumber}</span></p>
-              <p><span>FECHA:</span> <span>{lastReceipt.issueDate}</span></p>
-              <p><span>CLIENTE:</span> <span className="font-semibold">{lastReceipt.clientName}</span></p>
-              <p><span>RNC CLIENTE:</span> <span>{lastReceipt.clientRnc}</span></p>
-            </div>
-
-            <table className="w-full text-[10px] font-mono border-t border-b border-dashed border-gray-300 py-2 my-2 text-gray-850">
-              <thead>
-                <tr className="border-b border-dashed border-gray-200">
-                  <th className="text-left font-bold p-1">Item</th>
-                  <th className="text-center font-bold p-1">Cant</th>
-                  <th className="text-right font-bold p-1">Monto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lastReceipt.items.map((it, idx) => (
-                  <tr key={idx}>
-                    <td className="p-1 truncate max-w-[120px]">{it.name}</td>
-                    <td className="text-center p-1">{it.quantity}</td>
-                    <td className="text-right p-1">${(it.quantity * it.unitPrice).toFixed(0)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="text-xs font-mono text-gray-800 space-y-1 text-right">
-              <p><span>SUBTOTAL:</span> <span>${lastReceipt.subtotal.toFixed(2)}</span></p>
-              <p><span>ITBIS (18%):</span> <span>${lastReceipt.taxes.toFixed(2)}</span></p>
-              <p className="text-sm font-bold border-t border-dashed border-gray-250 pt-1"><span>TOTAL S.D.:</span> <span>${lastReceipt.total.toFixed(2)}</span></p>
-            </div>
-
-            <div className="text-center text-[10px] text-gray-400 border-t border-dashed border-gray-200 pt-3">
-              <p>¡Gracias por su visita / consumo!</p>
-              <p className="font-mono mt-1">Impresora Fiscal N° SF-4930A</p>
-            </div>
-
-            <div className="flex gap-2 pt-2 justify-center">
-              <button
-                onClick={() => setLastReceipt(null)}
-                className="bg-alegra-secondary hover:bg-slate-850 text-white text-xs font-semibold py-1.5 px-4 rounded w-full cursor-pointer"
-                id="btn-close-receipt"
-              >
-                Listo (Nueva Venta)
-              </button>
-            </div>
-          </div>
-        </div>
+        <InvoicePrinterModal
+          invoice={lastReceipt}
+          isOpen={!!lastReceipt}
+          onClose={() => setLastReceipt(null)}
+        />
       )}
 
       {/*******************************************************

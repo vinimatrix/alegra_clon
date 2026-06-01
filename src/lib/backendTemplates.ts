@@ -191,6 +191,76 @@ CREATE POLICY "Permitir escrituras a administradores"
 ON products FOR ALL 
 TO authenticated 
 USING (auth.jwt() ->> 'role' = 'admin');
+
+-- ============================================================
+-- 4. NUEVOS MÓDULOS DE NEGOCIO (CITAS, PACIENTES Y PROYECTOS)
+-- ============================================================
+
+-- Estructura de Módulos Activos
+CREATE TABLE business_modules_config (
+    id VARCHAR(100) PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    category VARCHAR(100),
+    is_enabled BOOLEAN DEFAULT FALSE,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc''::text, now()) NOT NULL
+);
+
+-- Turnos y Citas de Clientes (Salones, Clínicas, Talleres)
+CREATE TABLE appointment_turns (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+    client_name VARCHAR(255) NOT NULL,
+    phone VARCHAR(100),
+    service_name VARCHAR(255) NOT NULL,
+    price NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    appointment_date DATE NOT NULL,
+    appointment_time VARCHAR(50) NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'programado' CHECK (status IN ('programado', 'atendido', 'cancelado', 'no_asistio')),
+    assigned_staff VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc''::text, now()) NOT NULL
+);
+
+-- Records Clínicos y Fichas Médicas de Pacientes
+CREATE TABLE patient_records (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+    patient_name VARCHAR(255) NOT NULL,
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    reason TEXT NOT NULL,
+    diagnosis TEXT NOT NULL,
+    treatment TEXT NOT NULL,
+    prescription TEXT,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc''::text, now()) NOT NULL
+);
+
+-- Proyectos Corporativos (Agencias, Consultorías, Devs)
+CREATE TABLE projects (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+    client_name VARCHAR(255),
+    start_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    due_date DATE NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'planeacion' CHECK (status IN ('planeacion', 'en_desarrollo', 'entregado', 'pausado')),
+    progress INT DEFAULT 0 CHECK (progress >= 0 AND progress <= 100),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc''::text, now()) NOT NULL
+);
+
+-- Tareas de Proyectos (Gantt, Kanban, SCRUM)
+CREATE TABLE project_tasks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    status VARCHAR(50) NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'doing', 'review', 'done')),
+    assignee VARCHAR(255),
+    start_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    due_date DATE NOT NULL,
+    duration_days INT DEFAULT 1
+);
 `;
 
 export const NESTJS_CONTROLLER_TEMP = `// =========================================================

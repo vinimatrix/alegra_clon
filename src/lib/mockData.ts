@@ -3,7 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Product, Warehouse, Client, Invoice, Account, JournalEntry, RestaurantTable, RestaurantOrder } from '../types';
+import { 
+  Product, Warehouse, Client, Invoice, Account, JournalEntry, RestaurantTable, RestaurantOrder,
+  BusinessModuleConfig, AppointmentTurn, PatientRecord, Project, ProjectTask
+} from '../types';
 
 export const INITIAL_WAREHOUSES: Warehouse[] = [
   { id: 'wh-main', name: 'Almacén Central', location: 'Santo Domingo Centro', isDefault: true },
@@ -358,6 +361,58 @@ export const INITIAL_EMPLOYEES: import('../types').Employee[] = [
 ];
 
 export const INITIAL_PAYROLLS: import('../types').PayrollEntry[] = [];
+
+export const INITIAL_MODULES_CONFIG: BusinessModuleConfig[] = [
+  { id: 'citas_turnos', name: 'Sistema de Citas & Turnos', description: 'Cola de espera presencial, citas programadas guiadas, ideales para estéticas, salones, clínicas y talleres.', isEnabled: false, category: 'Citas & Turnos', iconName: 'Calendar' },
+  { id: 'records_medicos', name: 'Gestión de Pacientes & Records', description: 'Expedientes clínicos estructurados de salud, recetas dominicanas con ITBIS exento y control de signos vitales corporales.', isEnabled: false, category: 'Salud & Consultorio', iconName: 'Stethoscope' },
+  { id: 'gestion_proyectos', name: 'Gestión de Proyectos (Gantt & Kanban)', description: 'Gestión ágil corporativa para agencias de tecnología, consultoría o arquitectura. Incluye tableros Scrum/Kanban e informe de cronograma Gantt.', isEnabled: false, category: 'Proyectos & Consultoría', iconName: 'Layers' },
+];
+
+export const INITIAL_APPOINTMENTS: AppointmentTurn[] = [
+  { id: 'apt-01', ticketNumber: 'C-01', customerName: 'Eduardo Pérez', customerPhone: '809-555-0192', serviceRequested: 'Consulta Odontológica General', status: 'atendiendo', createdAt: '2026-05-30T10:00:00Z', notes: 'Dolor leve reportado en molar inferior.' },
+  { id: 'apt-02', ticketNumber: 'T-02', customerName: 'Sofía Rodríguez', customerPhone: '829-444-1122', serviceRequested: 'Procedimiento de Limpieza Completa', status: 'espera', createdAt: '2026-05-30T10:15:00Z' },
+  { id: 'apt-03', ticketNumber: 'C-03', customerName: 'María Alejandra Delgado', customerPhone: '849-888-0099', serviceRequested: 'Ortodoncia Ajuste Mensual', status: 'espera', createdAt: '2026-05-30T10:30:00Z' }
+];
+
+export const INITIAL_PATIENT_RECORDS: PatientRecord[] = [
+  {
+    id: 'rec-01',
+    patientId: 'c-01',
+    patientName: 'Eduardo Pérez',
+    date: '2026-05-15',
+    symptoms: 'Sensibilidad térmica en premolar superior izquierdo al tomar líquidos helados.',
+    diagnosis: 'Caries simple Grado 2 en diente 24.',
+    vitalSigns: { bloodPressure: '120/80', weightLb: 175, temperatureC: 36.6 },
+    treatmentPlan: 'Obturación con resina compuesta fotopolimerizada estética en diente 24.',
+    prescription: 'Ibuprofeno 400mg vía oral cada 8 horas por 3 días.',
+    treatingDoctor: 'Dra. Ana Peralta (Colegio RD-10492)'
+  },
+  {
+    id: 'rec-02',
+    patientId: 'c-02',
+    patientName: 'Sofía Rodríguez',
+    date: '2026-05-22',
+    symptoms: 'Control clínico post-operatorio de tercer molar e higienización anual.',
+    diagnosis: 'Evolución quirúrgica exitosa. Salud periodontal general sana.',
+    vitalSigns: { bloodPressure: '115/75', weightLb: 130, temperatureC: 36.5 },
+    treatmentPlan: 'Detartraje supragingival con ultrasonido y pulido con profilácticos.',
+    prescription: 'Enjuague bucal antiséptico preventivo sin alcohol por 5 días.',
+    treatingDoctor: 'Dra. Ana Peralta (Colegio RD-10492)'
+  }
+];
+
+export const INITIAL_PROJECTS: Project[] = [
+  { id: 'proj-01', name: 'Software ERP Adaptación Fiscal', description: 'Desarrollo de adecuaciones NCF de la DGII, comprobantes de gastos e ITBIS dominicano automatizado.', clientName: 'Sinergia Tecnológica SRL', clientId: 'c-03', startDate: '2026-05-01', dueDate: '2026-06-30', status: 'desarrollo', progress: 65 },
+  { id: 'proj-02', name: 'Identidad Corporativa Marca Retail', description: 'Rediseño de logotipo corporativo, manual de vectorización del manual de estilo de marca.', clientName: 'María Alejandra Delgado', clientId: 'c-04', startDate: '2026-05-15', dueDate: '2026-06-15', status: 'planeacion', progress: 20 }
+];
+
+export const INITIAL_PROJECT_TASKS: ProjectTask[] = [
+  { id: 'task-01', projectId: 'proj-01', name: 'Validación de RNC & Cédula', description: 'Configurar estructuras regex de DGII para clientes dominicanos en formularios del sistema.', status: 'done', assignee: 'Carlos Mateo', startDate: '2026-05-01', dueDate: '2026-05-10', durationDays: 9 },
+  { id: 'task-02', projectId: 'proj-01', name: 'Formatos Personalizados Térmicos (58 / 80)', description: 'Adaptar ticket fiscal con CSS emulado y driver de impresión del navegador real.', status: 'doing', assignee: 'Carlos Mateo', startDate: '2026-05-12', dueDate: '2026-05-28', durationDays: 16 },
+  { id: 'task-03', projectId: 'proj-01', name: 'Pruebas Automatizadas de Envíos 606 y 607', description: 'Comprobar que los archivos de texto delimitados por tuberías cumplen con la norma oficial dominicana.', status: 'todo', assignee: 'Laura Gómez', startDate: '2026-06-01', dueDate: '2026-06-15', durationDays: 14 },
+  { id: 'task-04', projectId: 'proj-02', name: 'Borradores de Paleta de Color', description: 'Presentar 3 conceptos del manual de marca de la tienda en formato responsive.', status: 'done', assignee: 'Sofía Rodríguez', startDate: '2026-05-15', dueDate: '2026-05-22', durationDays: 7 },
+  { id: 'task-05', projectId: 'proj-02', name: 'Figma Mockup Mobile Responsive', description: 'Maquetar vistas para el simulador de teléfono celular de camarero.', status: 'todo', assignee: 'Laura Gómez', startDate: '2026-05-25', dueDate: '2026-06-05', durationDays: 11 }
+];
 
 export function getLocalStorageState<T>(key: string, defaultValue: T): T {
   try {

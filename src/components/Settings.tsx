@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Palette, CheckCircle2, MonitorSmartphone, Settings as SettingsIcon, Database, Wifi, WifiOff, Save, Key, Globe } from 'lucide-react';
+import { Palette, CheckCircle2, MonitorSmartphone, Settings as SettingsIcon, Database, Wifi, WifiOff, Save, Key, Globe, Store, Clipboard } from 'lucide-react';
 import { reinitializeSupabase, getSupabaseConfig } from '../services/supabaseClient';
 import { isSupabaseActive } from '../services/api';
 
@@ -42,6 +42,37 @@ export default function Settings() {
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   const resolvedMode: BackendMode = useSupabaseCheckbox ? 'supabase' : 'mock';
+
+  // Business Profile states in Settings
+  const [profile, setProfile] = useState(() => {
+    const stored = localStorage.getItem('alegra_business_profile');
+    if (stored) {
+      try { return JSON.parse(stored); } catch (e) { /* fallback */ }
+    }
+    return {
+      name: 'Alegra Gourmet & Retail SRL',
+      rnc: '1-31-48201-4',
+      address: 'Calle Winston Churchill, Esq. Gustavo Mejía, Santo Domingo, RD',
+      phone: '809-541-2621',
+      logoType: 'icon' as const,
+      logoColor: '#4f46e5',
+      logoPrintText: '🍳 ALEGRA GOURMET 🍳',
+      defaultFormat: 'thermal_80' as const,
+      ncfPrefix: 'B0100000325'
+    };
+  });
+
+  const [profileSaveSuccess, setProfileSaveSuccess] = useState(false);
+
+  const handleSaveProfile = () => {
+    localStorage.setItem('alegra_business_profile', JSON.stringify(profile));
+    setProfileSaveSuccess(true);
+    setTimeout(() => {
+      setProfileSaveSuccess(false);
+    }, 2000);
+    // Notify general updates in real-time
+    window.dispatchEvent(new Event('alegra_profile_updated'));
+  };
 
   useEffect(() => {
     if (activeTheme === 'default') {
@@ -124,6 +155,145 @@ export default function Settings() {
                 </button>
               );
             })}
+          </div>
+        </div>
+      </div>
+
+      {/* Datos del Negocio y Facturación (Alegra Cloud) */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden" id="business-billing-profile">
+        <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Store className="text-alegra-primary" size={20} />
+            <h2 className="text-lg font-bold text-gray-800 font-display">Datos de la Empresa y Facturación</h2>
+          </div>
+          <span className="text-[10px] bg-indigo-100 text-indigo-700 font-extrabold px-2 py-0.5 rounded uppercase tracking-wider">
+            Factura Oficial & POS
+          </span>
+        </div>
+        
+        <div className="p-5 space-y-6">
+          <p className="text-sm text-gray-650">
+            Configure la información comercial de su negocio. Estos datos se sincronizarán directamente en los encabezados y pie de página de sus facturas descargables (formato estándar Carta/PDF) y en los formatos de ticket para impresoras térmicas de 80mm y 58mm.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Left Col */}
+            <div className="space-y-4">
+              <div className="space-y-1.5 text-left">
+                <label className="text-[11px] font-black text-gray-700 block uppercase tracking-wider">
+                  Nombre Comercial del Negocio:
+                </label>
+                <input
+                  type="text"
+                  value={profile.name}
+                  onChange={e => setProfile({ ...profile, name: e.target.value })}
+                  placeholder="Ej. Mi Restaurante Gourmet SRL"
+                  className="w-full bg-slate-50 border border-gray-200 rounded-lg text-xs px-3.5 py-2.5 outline-none focus:bg-white focus:border-alegra-primary font-semibold text-gray-800"
+                />
+              </div>
+
+              <div className="space-y-1.5 text-left">
+                <label className="text-[11px] font-black text-gray-700 block uppercase tracking-wider">
+                  RNC / Cédula Comercial de Identidad:
+                </label>
+                <input
+                  type="text"
+                  value={profile.rnc}
+                  onChange={e => setProfile({ ...profile, rnc: e.target.value })}
+                  placeholder="Ej. 1-31-48201-4"
+                  className="w-full bg-slate-50 border border-gray-200 rounded-lg text-xs px-3.5 py-2.5 outline-none focus:bg-white focus:border-alegra-primary font-mono font-bold text-gray-800"
+                />
+              </div>
+
+              <div className="space-y-1.5 text-left">
+                <label className="text-[11px] font-black text-gray-700 block uppercase tracking-wider">
+                  Prefijo o Nomenclatura NCF Fiscal (DGII):
+                </label>
+                <input
+                  type="text"
+                  value={profile.ncfPrefix}
+                  onChange={e => setProfile({ ...profile, ncfPrefix: e.target.value })}
+                  placeholder="Ej. B0100000325"
+                  className="w-full bg-slate-50 border border-gray-200 rounded-lg text-xs px-3.5 py-2.5 outline-none focus:bg-white focus:border-alegra-primary font-mono font-bold text-gray-800"
+                />
+              </div>
+            </div>
+
+            {/* Right Col */}
+            <div className="space-y-4">
+              <div className="space-y-1.5 text-left">
+                <label className="text-[11px] font-black text-gray-700 block uppercase tracking-wider">
+                  Dirección Comercial Completa:
+                </label>
+                <input
+                  type="text"
+                  value={profile.address}
+                  onChange={e => setProfile({ ...profile, address: e.target.value })}
+                  placeholder="Ej. Calle Winston Churchill, Santo Domingo"
+                  className="w-full bg-slate-50 border border-gray-200 rounded-lg text-xs px-3.5 py-2.5 outline-none focus:bg-white focus:border-alegra-primary text-gray-800 font-medium"
+                />
+              </div>
+
+              <div className="space-y-1.5 text-left">
+                <label className="text-[11px] font-black text-gray-700 block uppercase tracking-wider">
+                  Teléfono de Contacto:
+                </label>
+                <input
+                  type="text"
+                  value={profile.phone}
+                  onChange={e => setProfile({ ...profile, phone: e.target.value })}
+                  placeholder="Ej. 809-541-2621"
+                  className="w-full bg-slate-50 border border-gray-200 rounded-lg text-xs px-3.5 py-2.5 outline-none focus:bg-white focus:border-alegra-primary text-gray-800 font-semibold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5 text-left">
+                  <label className="text-[11px] font-black text-gray-700 block uppercase tracking-wider">
+                    Logo Imprimible (Texto):
+                  </label>
+                  <input
+                    type="text"
+                    value={profile.logoPrintText}
+                    onChange={e => setProfile({ ...profile, logoPrintText: e.target.value })}
+                    placeholder="Ej. 🍳 ALEGRA POS 🍳"
+                    className="w-full bg-slate-50 border border-gray-200 rounded-lg text-xs px-3.5 py-2.5 outline-none focus:bg-white focus:border-alegra-primary text-gray-800 font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1.5 text-left">
+                  <label className="text-[11px] font-black text-gray-700 block uppercase tracking-wider">
+                    Formato por Defecto:
+                  </label>
+                  <select
+                    value={profile.defaultFormat}
+                    onChange={e => setProfile({ ...profile, defaultFormat: e.target.value as any })}
+                    className="w-full bg-slate-50 border border-gray-205 rounded-lg text-xs px-3 py-2.5 outline-none focus:bg-white focus:border-alegra-primary text-gray-800 font-semibold"
+                  >
+                    <option value="carta">Normal / Carta de Oficina</option>
+                    <option value="thermal_80">Ticket Térmico 80mm</option>
+                    <option value="thermal_58">Ticket Térmico 58mm</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-150 flex items-center gap-4">
+            <button
+              type="button"
+              onClick={handleSaveProfile}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-2.5 rounded-lg text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer uppercase tracking-wider"
+              id="btn-save-billing-profile"
+            >
+              <Save size={14} /> Guardar Perfil Comercial
+            </button>
+
+            {profileSaveSuccess && (
+              <span className="text-xs text-green-600 font-bold flex items-center gap-1 animate-pulse">
+                <CheckCircle2 size={14} /> ¡Sincronizado! Se cargará automáticamente en todas las facturas.
+              </span>
+            )}
           </div>
         </div>
       </div>

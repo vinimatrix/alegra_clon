@@ -38,7 +38,8 @@ import {
   Receipt,
   HeartHandshake
 } from 'lucide-react';
-import { Product, RestaurantTable, RestaurantOrder, RestaurantOrderItem, JournalEntry } from '../types';
+import { Product, RestaurantTable, RestaurantOrder, RestaurantOrderItem, JournalEntry, Invoice } from '../types';
+import InvoicePrinterModal from './InvoicePrinterModal';
 
 interface POSMobileSimulatorProps {
   products: Product[];
@@ -47,6 +48,7 @@ interface POSMobileSimulatorProps {
   onUpdateOrders: (updatedOrders: RestaurantOrder[]) => void;
   onUpdateTables: (updatedTables: RestaurantTable[]) => void;
   onAddJournalEntry: (entry: JournalEntry) => void;
+  onAddInvoice?: (newInvoice: Invoice) => void;
 }
 
 const WAITERS = [
@@ -61,8 +63,13 @@ export default function POSMobileSimulator({
   orders, 
   onUpdateOrders, 
   onUpdateTables, 
-  onAddJournalEntry 
+  onAddJournalEntry,
+  onAddInvoice
 }: POSMobileSimulatorProps) {
+  // Mobile Printer states
+  const [justCreatedInvoice, setJustCreatedInvoice] = useState<Invoice | null>(null);
+  const [isPrinterOpen, setIsPrinterOpen] = useState(false);
+
   // Simulator Login States
   const [currentWaiter, setCurrentWaiter] = useState<typeof WAITERS[0] | null>(null);
   const [pinInput, setPinInput] = useState('');
@@ -371,6 +378,39 @@ export default function POSMobileSimulator({
     onUpdateOrders(updatedOrdersList);
     onUpdateTables(updatedTablesList);
     onAddJournalEntry(doubleEntry);
+
+    // 4. Create and register proper Invoice for general ERP invoice and printing modules
+    const newInvoiceNumber = `FC-MOB-${Date.now().toString().slice(-4)}`;
+    const newInvoice: Invoice = {
+      id: `f-mob-${Date.now()}`,
+      invoiceNumber: newInvoiceNumber,
+      clientId: 'c-gen', // Contado
+      clientName: `${selectedTable.name} (POS Móvil)`,
+      clientRnc: '224-0012344-5',
+      issueDate: new Date().toISOString().split('T')[0],
+      dueDate: new Date().toISOString().split('T')[0],
+      items: activeOrderForTable.items.map(item => ({
+        productId: item.productId,
+        name: item.name,
+        quantity: item.quantity,
+        unitPrice: item.price,
+        discount: 0,
+        taxRate: 0.18,
+        total: item.price * item.quantity * 1.18
+      })),
+      subtotal: Number(subtotal),
+      taxes: Number(tax),
+      discount: 0,
+      total: Number(total),
+      status: 'pagada',
+      paymentMethod: paymentMethod === 'efectivo' ? 'Efectivo en Caja' : 'Tarjeta / Electrónico',
+      notes: `Cobro en POS Móvil por ${currentWaiter?.name || 'Mesero'}`
+    };
+
+    if (onAddInvoice) {
+      onAddInvoice(newInvoice);
+    }
+    setJustCreatedInvoice(newInvoice);
 
     // Clear and state route to success
     setLastProcessedOrderId(activeOrderForTable.id);
@@ -1254,12 +1294,21 @@ export default function AlegraPOSMobileClient() {
                         </div>
                       </div>
 
-                      <button
-                        onClick={handleExitService}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[10px] w-full py-2.5 rounded-xl transition-all shadow-md cursor-pointer uppercase shrink-0"
-                      >
-                        regresar a mesas gratis
-                      </button>
+                      <div className="w-full space-y-2 mt-4 shrink-0">
+                        <button
+                          onClick={() => setIsPrinterOpen(true)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] w-full py-2.5 rounded-xl transition-all shadow-md cursor-pointer uppercase flex items-center justify-center gap-1"
+                        >
+                          <Printer size={12} /> Imprimir Factura (Múltiples Formatos)
+                        </button>
+                        
+                        <button
+                          onClick={handleExitService}
+                          className="bg-slate-800 hover:bg-slate-700 text-gray-300 font-extrabold text-[10px] w-full py-2 rounded-xl transition-all cursor-pointer uppercase"
+                        >
+                          regresar a mesas gratis
+                        </button>
+                      </div>
                     </motion.div>
                   )}
 
@@ -1660,6 +1709,13 @@ export default function AlegraPOSMobileClient() {
 
       </div>
 
+      {justCreatedInvoice && (
+        <InvoicePrinterModal 
+          invoice={justCreatedInvoice} 
+          isOpen={isPrinterOpen} 
+          onClose={() => setIsPrinterOpen(false)} 
+        />
+      )}
     </div>
   );
 }

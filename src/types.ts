@@ -204,3 +204,93 @@ export interface PayrollEntry {
   netSalary: number;
   status: 'pendiente' | 'pagada';
 }
+
+// Dynamics Activable Modules System Custom Interfaces
+export interface BusinessModuleConfig {
+  id: 'citas_turnos' | 'records_medicos' | 'gestion_proyectos';
+  name: string;
+  description: string;
+  isEnabled: boolean;
+  category: 'Citas & Turnos' | 'Salud & Consultorio' | 'Proyectos & Consultoría';
+  iconName: string;
+}
+
+export interface AppointmentTurn {
+  id: string;
+  ticketNumber: string; // e.g. T-01, C-02
+  customerName: string;
+  customerPhone?: string;
+  serviceRequested: string; // e.g. "Corte de Cabello", "Consulta Dental"
+  assignedStaffId?: string;
+  assignedStaffName?: string;
+  scheduledTime?: string; // If appointment, otherwise empty for Walk-In turn
+  status: 'espera' | 'atendiendo' | 'completado' | 'cancelado';
+  createdAt: string;
+  notes?: string;
+}
+
+export interface PatientRecord {
+  id: string;
+  patientId: string; // client id (with client type/info)
+  patientName: string;
+  date: string;
+  symptoms: string;
+  diagnosis: string;
+  vitalSigns: {
+    bloodPressure?: string;
+    weightLb?: number;
+    temperatureC?: number;
+  };
+  treatmentPlan: string;
+  prescription: string; // Receta médica
+  treatingDoctor: string;
+  nextFollowUp?: string;
+  status?: 'activo' | 'observacion' | 'alta_medica' | 'estudio_pendiente' | 'urgente';
+  studies?: Array<{
+    id: string;
+    name: string;
+    status: 'pendiente' | 'entregado';
+    date: string;
+    notes?: string;
+  }>;
+  evolutions?: Array<{
+    id: string;
+    date: string;
+    type: 'cambio_sintoma' | 'laboratorio' | 'control_rutina' | 'nota_general';
+    description: string;
+    details?: string;
+  }>;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  clientId?: string;
+  clientName?: string;
+  startDate: string;
+  dueDate: string;
+  status: 'planeacion' | 'desarrollo' | 'revision' | 'entregado' | 'pausado' | 'atrasado';
+  progress: number; // percentage 0-100
+  incidents?: Array<{
+    id: string;
+    date: string;
+    type: 'atraso' | 'cambio_alcance' | 'riesgo' | 'nota_general' | 'reunion_cliente';
+    title: string;
+    description: string;
+    resolved: boolean;
+  }>;
+}
+
+export interface ProjectTask {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string;
+  status: 'todo' | 'doing' | 'review' | 'done';
+  assignee: string;
+  startDate: string;
+  dueDate: string;
+  durationDays: number; // For Gantt timeline rendering
+}
+

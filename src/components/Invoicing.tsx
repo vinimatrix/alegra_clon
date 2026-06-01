@@ -18,6 +18,7 @@ import {
   FileText
 } from 'lucide-react';
 import { Invoice, Product, Client, InvoiceItem } from '../types';
+import InvoicePrinterModal from './InvoicePrinterModal';
 
 interface InvoicingProps {
   invoices: Invoice[];
@@ -30,6 +31,7 @@ interface InvoicingProps {
 export default function Invoicing({ invoices, products, clients, onAddInvoice, onCancelInvoice }: InvoicingProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState<Invoice | null>(null);
+  const [isPrinterOpen, setIsPrinterOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'todos' | 'pagada' | 'pendiente' | 'anulada'>('todos');
 
@@ -567,10 +569,10 @@ export default function Invoicing({ invoices, products, clients, onAddInvoice, o
               <span className="text-[10px] text-gray-400 italic">Generado electrónicamente por Alegra Clone ERP</span>
               <div className="flex gap-2">
                 <button
-                  onClick={() => alert("Impresora Termo-POS no detectada. Versión digital guardada de forma segura en sistema.")}
-                  className="bg-alegra-secondary text-white hover:bg-slate-850 py-1.5 px-3 rounded text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                  onClick={() => setIsPrinterOpen(true)}
+                  className="bg-emerald-600 text-white hover:bg-emerald-700 py-1.5 px-4 rounded text-xs font-extrabold flex items-center gap-1 cursor-pointer"
                 >
-                  <Download size={14} /> Descargar PDF / Imprimir
+                  <Download size={14} /> Configurar e Imprimir
                 </button>
                 <button
                   onClick={() => setShowPreviewModal(null)}
@@ -583,6 +585,12 @@ export default function Invoicing({ invoices, products, clients, onAddInvoice, o
           </div>
         </div>
       )}
+
+      <InvoicePrinterModal
+        invoice={showPreviewModal}
+        isOpen={isPrinterOpen}
+        onClose={() => setIsPrinterOpen(false)}
+      />
     </div>
   );
 }

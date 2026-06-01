@@ -7,18 +7,21 @@ import React, { useState, useEffect } from 'react';
 import {
   Building2, TrendingUp, FileText, Package, ShoppingBag, Smartphone,
   BookOpen, Database, Menu, X, User, BellRing, Settings as SettingsIcon,
-  Users, Receipt, FileBarChart, Coffee, ChefHat
+  Users, Receipt, FileBarChart, Coffee, ChefHat,
+  Stethoscope, Calendar, Layers, Grid
 } from 'lucide-react';
 
 import {
   Product, Invoice, Account, JournalEntry, Client, Expense,
-  Employee, PayrollEntry, Warehouse, CashSession, CajaClosureHistory
+  Employee, PayrollEntry, Warehouse, CashSession, CajaClosureHistory,
+  BusinessModuleConfig, AppointmentTurn, PatientRecord, Project, ProjectTask
 } from './types';
 
 import {
   INITIAL_PRODUCTS, INITIAL_INVOICES, INITIAL_ACCOUNTS, INITIAL_JOURNAL_ENTRIES,
   INITIAL_TABLES, INITIAL_ORDERS, INITIAL_WAREHOUSES, INITIAL_CLIENTS,
   INITIAL_EXPENSES, INITIAL_EMPLOYEES, INITIAL_PAYROLLS,
+  INITIAL_MODULES_CONFIG, INITIAL_APPOINTMENTS, INITIAL_PATIENT_RECORDS, INITIAL_PROJECTS, INITIAL_PROJECT_TASKS,
   getLocalStorageState, saveLocalStorageState
 } from './lib/mockData';
 
@@ -39,6 +42,11 @@ import ReportsDGII from './components/ReportsDGII';
 import Payroll from './components/Payroll';
 import KitchenKDS from './components/KitchenKDS';
 import KitchenManager from './components/KitchenManager';
+
+import ActiveModules from './components/ActiveModules';
+import AppointmentsModule from './components/AppointmentsModule';
+import PatientRecordsModule from './components/PatientRecordsModule';
+import ProjectsModule from './components/ProjectsModule';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
@@ -63,6 +71,13 @@ export default function App() {
     { id: 'tax-3', name: 'Impuesto Selectivo 10%', rate: 10 },
     { id: 'tax-4', name: 'Exento 0%', rate: 0 }
   ]));
+
+  // Activable Industry-Specific Business Modules States
+  const [modulesConfig, setModulesConfig] = useState<BusinessModuleConfig[]>(() => getLocalStorageState('alegra_modules_config', INITIAL_MODULES_CONFIG));
+  const [appointments, setAppointments] = useState<AppointmentTurn[]>(() => getLocalStorageState('alegra_appointments', INITIAL_APPOINTMENTS));
+  const [patientRecords, setPatientRecords] = useState<PatientRecord[]>(() => getLocalStorageState('alegra_patient_records', INITIAL_PATIENT_RECORDS));
+  const [projects, setProjects] = useState<Project[]>(() => getLocalStorageState('alegra_projects', INITIAL_PROJECTS));
+  const [projectTasks, setProjectTasks] = useState<ProjectTask[]>(() => getLocalStorageState('alegra_project_tasks', INITIAL_PROJECT_TASKS));
 
   // Cash Register (Caja) states
   const [cajaSession, setCajaSession] = useState<CashSession>(() => {
@@ -182,6 +197,86 @@ export default function App() {
   useEffect(() => {
     saveLocalStorageState('alegra_categories', categories);
   }, [categories]);
+
+  useEffect(() => {
+    saveLocalStorageState('alegra_modules_config', modulesConfig);
+  }, [modulesConfig]);
+
+  useEffect(() => {
+    saveLocalStorageState('alegra_appointments', appointments);
+  }, [appointments]);
+
+  useEffect(() => {
+    saveLocalStorageState('alegra_patient_records', patientRecords);
+  }, [patientRecords]);
+
+  useEffect(() => {
+    saveLocalStorageState('alegra_projects', projects);
+  }, [projects]);
+
+  useEffect(() => {
+    saveLocalStorageState('alegra_project_tasks', projectTasks);
+  }, [projectTasks]);
+
+  // Action Handlers for Custom Activable Business Modules
+  const handleAddAppointment = (apt: AppointmentTurn) => {
+    setAppointments(prev => [apt, ...prev]);
+  };
+
+  const handleUpdateAppointmentStatus = (id: string, status: AppointmentTurn['status']) => {
+    setAppointments(prev => prev.map(a => a.id === id ? { ...a, status } : a));
+  };
+
+  const handleDeleteAppointment = (id: string) => {
+    setAppointments(prev => prev.filter(a => a.id !== id));
+  };
+
+  const handleAddPatientRecord = (rec: PatientRecord) => {
+    setPatientRecords(prev => [rec, ...prev]);
+  };
+
+  const handleUpdatePatientRecord = (id: string, updated: PatientRecord) => {
+    setPatientRecords(prev => prev.map(r => r.id === id ? updated : r));
+  };
+
+  const handleDeletePatientRecord = (id: string) => {
+    setPatientRecords(prev => prev.filter(r => r.id !== id));
+  };
+
+  const handleAddProject = (proj: Project) => {
+    setProjects(prev => [proj, ...prev]);
+  };
+
+  const handleUpdateProject = (id: string, updated: Project) => {
+    setProjects(prev => prev.map(p => p.id === id ? updated : p));
+  };
+
+  const handleUpdateProjectProgress = (id: string, progress: number) => {
+    setProjects(prev => prev.map(p => p.id === id ? { ...p, progress } : p));
+  };
+
+  const handleAddProjectTask = (t: ProjectTask) => {
+    setProjectTasks(prev => [t, ...prev]);
+  };
+
+  const handleUpdateTaskStatus = (id: string, status: ProjectTask['status']) => {
+    setProjectTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+  };
+
+  const handleToggleModule = (id: BusinessModuleConfig['id']) => {
+    setModulesConfig(prev => prev.map(m => m.id === id ? { ...m, isEnabled: !m.isEnabled } : m));
+  };
+
+  const handleApplyPreset = (preset: 'salon' | 'clinic' | 'agency' | 'full' | 'reset') => {
+    setModulesConfig(prev => prev.map(m => {
+      let isEnabled = false;
+      if (preset === 'full') isEnabled = true;
+      else if (preset === 'salon' && m.id === 'citas_turnos') isEnabled = true;
+      else if (preset === 'clinic' && (m.id === 'citas_turnos' || m.id === 'records_medicos')) isEnabled = true;
+      else if (preset === 'agency' && m.id === 'gestion_proyectos') isEnabled = true;
+      return { ...m, isEnabled };
+    }));
+  };
 
   useEffect(() => {
     saveLocalStorageState('alegra_taxes', taxes);
@@ -595,6 +690,16 @@ export default function App() {
 
   const menuItems = [
     { id: 'dashboard', label: 'Inicio / KPI', icon: TrendingUp },
+    { id: 'active-modules', label: 'Módulos de Negocio', icon: Grid },
+    ...(modulesConfig.find(m => m.id === 'citas_turnos')?.isEnabled
+      ? [{ id: 'citas-turnos', label: 'Citas & Turnos', icon: Calendar }]
+      : []),
+    ...(modulesConfig.find(m => m.id === 'records_medicos')?.isEnabled
+      ? [{ id: 'records-medicos', label: 'Pacientes & Records', icon: Stethoscope }]
+      : []),
+    ...(modulesConfig.find(m => m.id === 'gestion_proyectos')?.isEnabled
+      ? [{ id: 'gestion-proyectos', label: 'Proyectos & Gantt', icon: Layers }]
+      : []),
     { id: 'facturacion', label: 'Facturación Ventas', icon: FileText },
     { id: 'pos-restaurante', label: 'POS & Restaurante', icon: ShoppingBag },
     { id: 'pos-mobile', label: 'Vista POS Mobile (Simulator)', icon: Smartphone },
@@ -759,6 +864,43 @@ export default function App() {
               {activeTab === 'dashboard' && (
                 <Dashboard products={products} invoices={invoices} journalEntries={journalEntries} navigateToTab={navigateToTab} />
               )}
+              {activeTab === 'active-modules' && (
+                <ActiveModules 
+                  modulesConfig={modulesConfig} 
+                  onToggleModule={handleToggleModule} 
+                  onApplyPreset={handleApplyPreset} 
+                />
+              )}
+              {activeTab === 'citas-turnos' && (
+                <AppointmentsModule 
+                  appointments={appointments} 
+                  onAddAppointment={handleAddAppointment} 
+                  onUpdateAppointmentStatus={handleUpdateAppointmentStatus} 
+                  onDeleteAppointment={handleDeleteAppointment} 
+                  clients={clients} 
+                />
+              )}
+              {activeTab === 'records-medicos' && (
+                <PatientRecordsModule 
+                  records={patientRecords} 
+                  onAddRecord={handleAddPatientRecord} 
+                  onUpdateRecord={handleUpdatePatientRecord}
+                  onDeleteRecord={handleDeletePatientRecord} 
+                  clients={clients} 
+                />
+              )}
+              {activeTab === 'gestion-proyectos' && (
+                <ProjectsModule 
+                  projects={projects} 
+                  tasks={projectTasks} 
+                  onAddProject={handleAddProject} 
+                  onUpdateProject={handleUpdateProject}
+                  onUpdateProjectProgress={handleUpdateProjectProgress} 
+                  onAddProjectTask={handleAddProjectTask} 
+                  onUpdateTaskStatus={handleUpdateTaskStatus} 
+                  clients={clients} 
+                />
+              )}
               {activeTab === 'facturacion' && (
                 <Invoicing 
                   invoices={invoices} 
@@ -796,6 +938,7 @@ export default function App() {
                   onUpdateOrders={handleUpdateOrders}
                   onUpdateTables={handleUpdateTables}
                   onAddJournalEntry={handleAddJournalEntry}
+                  onAddInvoice={handleAddInvoice}
                 />
               )}
               {activeTab === 'cocina-kds' && (
