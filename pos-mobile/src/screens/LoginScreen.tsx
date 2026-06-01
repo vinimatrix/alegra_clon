@@ -69,7 +69,13 @@ export default function LoginScreen({ onLogin }: { onLogin: (userEmail?: string)
       } catch (err: any) {
         console.warn('Error logins Supabase en móvil:', err);
         let msg = err.message || 'Error de conexión con Supabase.';
-        if (msg.includes('Invalid login credentials')) {
+        if (
+          msg.includes('apiKey') || 
+          msg.toLowerCase().includes('api key') || 
+          msg.toLowerCase().includes('apikey')
+        ) {
+          msg = 'La clave pública (Anon Key) de Supabase es inválida o incorrecta. Haz clic en ⚙️ Conexión arriba a la derecha para guardarla correctamente o corregir la configuración.';
+        } else if (msg.includes('Invalid login credentials')) {
           msg = 'Credenciales inválidas. Comprueba tu correo o contraseña.';
         }
         setErrorMessage(msg);

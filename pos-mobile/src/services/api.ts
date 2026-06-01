@@ -95,13 +95,56 @@ export const mobileApi = {
     const taxes = totalAmount * 0.18; // 18% standard tax rate
     const subtotal = totalAmount - taxes;
 
+    let activeClientId: string | null = null;
+    let activeClientName = 'Consumidor Final (POS Móvil)';
+    let activeClientRnc = '224-00123-5';
+
+    if (isSupabaseActive()) {
+      try {
+        // 1. Fetch any existing client to associate with the cash sale
+        const { data: clientsData, error: clientErr } = await supabase
+          .from('clients')
+          .select('id, name, rnc')
+          .limit(1);
+
+        if (!clientErr && clientsData && clientsData.length > 0) {
+          activeClientId = clientsData[0].id;
+          activeClientName = clientsData[0].name;
+          activeClientRnc = clientsData[0].rnc || 'Consumidor Final';
+        } else {
+          // 2. If no client exists, seed a generic one first so that foreign key parses successfully
+          const genericClient = {
+            id: 'c-pos-generic',
+            name: 'Consumidor Final (POS Móvil)',
+            rnc: '224-00123-5',
+            email: 'contacto@pos.alegra.com',
+            phone: 'N/A',
+            address: 'Venta de Caja POS'
+          };
+          const { data: seeded, error: seedErr } = await supabase
+            .from('clients')
+            .insert([toSnakeCase(genericClient)])
+            .select();
+
+          if (!seedErr && seeded && seeded.length > 0) {
+            const camelSeeded = toCamelCase(seeded[0]);
+            activeClientId = camelSeeded.id;
+            activeClientName = camelSeeded.name;
+            activeClientRnc = camelSeeded.rnc || 'Consumidor Final';
+          }
+        }
+      } catch (e) {
+        console.warn('Error resolving client ID in Supabase, falling back to null representation:', e);
+      }
+    }
+
     // Build the exact web admin compliant invoice payload
     const invoicePayload = {
       id: 'inv-' + Math.random().toString(36).substr(2, 9),
       invoiceNumber: 'NFC-POS-' + Math.floor(100000 + Math.random() * 900000),
-      clientId: 'cli-pos-anon',
-      clientName: 'Consumidor Final (POS Móvil)',
-      clientRnc: '224-00123-5',
+      clientId: activeClientId, // Dynmically resolved client ID (or null to support constraint bypass)
+      clientName: activeClientName,
+      clientRnc: activeClientRnc,
       issueDate: today,
       dueDate: today,
       items: cart.map(item => ({

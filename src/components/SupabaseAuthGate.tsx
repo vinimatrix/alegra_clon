@@ -106,7 +106,13 @@ export default function SupabaseAuthGate({
       console.error('Error de autenticación Supabase:', err);
       // Give translate friendly feedback
       let friendlyError = err.message || 'Ocurrió un error inesperado.';
-      if (friendlyError.includes('Invalid login credentials')) {
+      if (
+        friendlyError.includes('apiKey') || 
+        friendlyError.toLowerCase().includes('api key') || 
+        friendlyError.toLowerCase().includes('apikey')
+      ) {
+        friendlyError = 'Error de Configuración: La clave pública (Anon Key) de Supabase en las variables de entorno es incorrecta o inválida. Asegúrate de copiarla tal como está en el panel de Supabase.';
+      } else if (friendlyError.includes('Invalid login credentials')) {
         friendlyError = 'Credenciales inválidas. Compruebe su correo o contraseña.';
       } else if (friendlyError.includes('User already registered')) {
         friendlyError = 'Este correo electrónico ya está registrado.';
