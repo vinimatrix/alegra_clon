@@ -16,7 +16,7 @@ import { supabase, getSupabaseConfig } from './supabaseClient';
 
 export function isSupabaseActive() {
   const config = getSupabaseConfig();
-  return config.use && config.url !== 'https://placeholder.supabase.co';
+  return !!(config.use && config.hasValidKeys);
 }
 
 export const USE_SUPABASE = isSupabaseActive();
