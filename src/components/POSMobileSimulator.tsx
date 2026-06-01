@@ -185,7 +185,8 @@ export default function POSMobileSimulator({
         return {
           product: matchingProduct,
           qty: item.quantity,
-          notes: item.notes || ''
+          notes: item.notes || '',
+          sentToKitchen: !!item.sentToKitchen
         };
       });
       setMobileCart(reconstructedCart);
@@ -198,13 +199,19 @@ export default function POSMobileSimulator({
 
   // Cart operations
   const addToCart = (product: Product) => {
-    const existingIndex = mobileCart.findIndex(item => item.product.id === product.id);
+    const activeOrderForTable = selectedTable ? orders.find(o => o.tableId === selectedTable.id && o.status !== 'cobrada') : null;
+    if (activeOrderForTable && activeOrderForTable.status === 'entregada') {
+      alert("Esta comanda ya está entregada y lista para cobro. No se pueden agregar más productos.");
+      return;
+    }
+
+    const existingIndex = mobileCart.findIndex(item => item.product.id === product.id && !item.sentToKitchen);
     if (existingIndex >= 0) {
       const updated = [...mobileCart];
       updated[existingIndex].qty += 1;
       setMobileCart(updated);
     } else {
-      setMobileCart([...mobileCart, { product, qty: 1, notes: '' }]);
+      setMobileCart([...mobileCart, { product, qty: 1, notes: '', sentToKitchen: false }]);
     }
     addNotification(`Añadido: ${product.name}`);
   };
@@ -212,6 +219,10 @@ export default function POSMobileSimulator({
   const updateCartQty = (productId: string, delta: number) => {
     const updated = mobileCart.map(item => {
       if (item.product.id === productId) {
+        if (item.sentToKitchen) {
+          alert("No se puede modificar la cantidad de un artículo que ya ha sido enviado a la cocina.");
+          return item;
+        }
         const newQty = item.qty + delta;
         return { ...item, qty: newQty < 1 ? 1 : newQty };
       }
@@ -221,10 +232,20 @@ export default function POSMobileSimulator({
   };
 
   const removeFromCart = (productId: string) => {
+    const targetItem = mobileCart.find(item => item.product.id === productId);
+    if (targetItem && targetItem.sentToKitchen) {
+      alert("No se puede eliminar un plato que ya ha sido enviado a la cocina.");
+      return;
+    }
     setMobileCart(mobileCart.filter(item => item.product.id !== productId));
   };
 
   const updateNotes = (productId: string, notes: string) => {
+    const targetItem = mobileCart.find(item => item.product.id === productId);
+    if (targetItem && targetItem.sentToKitchen) {
+      alert("No se puede modificar las notas de un artículo que ya ha sido enviado a la cocina.");
+      return;
+    }
     setMobileCart(mobileCart.map(item => 
       item.product.id === productId ? { ...item, notes } : item
     ));
@@ -232,8 +253,15 @@ export default function POSMobileSimulator({
 
   // Helper calculation
   const subtotal = mobileCart.reduce((sum, item) => sum + (item.product.price * item.qty), 0);
-  const tax = subtotal * 0.18; // 18% ITBIS
+  const tax = mobileCart.reduce((sum, item) => {
+    const rate = item.product.taxRate !== undefined && item.product.taxRate !== null ? item.product.taxRate : 0.18;
+    return sum + (item.product.price * item.qty * rate);
+  }, 0);
   const total = subtotal + tax;
+
+  const isMobileOrderDelivered = selectedTable 
+    ? (orders.find(o => o.tableId === selectedTable.id && o.status !== 'cobrada')?.status === 'entregada') 
+    : false;
 
   const addNotification = (msg: string) => {
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -247,23 +275,46 @@ export default function POSMobileSimulator({
     // Check if there is an existing open order in system
     const existingOrder = orders.find(o => o.tableId === selectedTable.id && o.status !== 'cobrada');
     
-    // Map mobileCart state to RestaurantOrderItem structure
-    const orderItems: RestaurantOrderItem[] = mobileCart.map(item => ({
-      productId: item.product.id,
-      name: item.product.name,
-      quantity: item.qty,
-      price: item.product.price,
-      notes: item.notes || undefined
-    }));
+    if (existingOrder && existingOrder.status === 'entregada') {
+      alert("La comanda actual de esta mesa ya fue entregada por cocina y está lista para cobrar. No se pueden enviar más platos.");
+      return;
+    }
+
+    // Determine if we are actually sending any new food/drinks to the kitchen
+    let hasNewKitchenItems = false;
+    const orderItems: RestaurantOrderItem[] = mobileCart.map(item => {
+      const isKitchen = ['platos', 'bebidas', 'alimentos', 'cocina', 'comida', 'postres', 'aperitivos'].includes(item.product.category.toLowerCase())
+        && !['audifono', 'cargador', 'audífonos', 'termo', 'cable'].some(k => item.product.name.toLowerCase().includes(k));
+
+      const alreadySent = !!item.sentToKitchen;
+      const shouldSend = isKitchen && !alreadySent;
+
+      if (shouldSend) {
+        hasNewKitchenItems = true;
+      }
+
+      return {
+        productId: item.product.id,
+        name: item.product.name,
+        quantity: item.qty,
+        price: item.product.price,
+        notes: item.notes || undefined,
+        sentToKitchen: alreadySent || shouldSend
+      };
+    });
 
     let updatedOrdersList = [...orders];
     let workingOrder: RestaurantOrder;
+
+    // Transition status to en_preparacion if new culinary items are dispatched
+    const activeStatus = hasNewKitchenItems ? 'en_preparacion' as const : (existingOrder ? existingOrder.status : 'pendiente' as const);
 
     if (existingOrder) {
       // Update existing order
       workingOrder = {
         ...existingOrder,
         items: orderItems,
+        status: activeStatus,
         subtotal,
         taxes: tax,
         total,
@@ -279,7 +330,7 @@ export default function POSMobileSimulator({
         tableId: selectedTable.id,
         tableName: selectedTable.name,
         items: orderItems,
-        status: 'pendiente',
+        status: activeStatus,
         subtotal,
         taxes: tax,
         total,
@@ -301,7 +352,7 @@ export default function POSMobileSimulator({
     onUpdateTables(updatedTablesList);
     setTrackingOrder(workingOrder); // Sync live customer tracker viewport
     
-    AlertSimulator(`📡 Real-Time Sync: Comanda enviada a Cocina principal y Panel Admin.`);
+    AlertSimulator(`📡 Sincronización en Tiempo Real: Comanda enviada a Cocina principal y Panel Admin.`);
     setActiveScreen('tables');
   };
 
@@ -389,15 +440,19 @@ export default function POSMobileSimulator({
       clientRnc: '224-0012344-5',
       issueDate: new Date().toISOString().split('T')[0],
       dueDate: new Date().toISOString().split('T')[0],
-      items: activeOrderForTable.items.map(item => ({
-        productId: item.productId,
-        name: item.name,
-        quantity: item.quantity,
-        unitPrice: item.price,
-        discount: 0,
-        taxRate: 0.18,
-        total: item.price * item.quantity * 1.18
-      })),
+      items: activeOrderForTable.items.map(item => {
+        const prodMatch = products.find(p => p.id === item.productId || p.name === item.name);
+        const rate = prodMatch && prodMatch.taxRate !== undefined && prodMatch.taxRate !== null ? prodMatch.taxRate : 0.18;
+        return {
+          productId: item.productId,
+          name: item.name,
+          quantity: item.quantity,
+          unitPrice: item.price,
+          discount: 0,
+          taxRate: rate,
+          total: item.price * item.quantity * (1 + rate)
+        };
+      }),
       subtotal: Number(subtotal),
       taxes: Number(tax),
       discount: 0,
@@ -970,6 +1025,12 @@ export default function AlegraPOSMobileClient() {
                       </div>
 
                       {/* Interactive dynamic item catalog List */}
+                      {isMobileOrderDelivered && (
+                        <div className="mx-2.5 mt-2 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-lg p-2 text-center text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 animate-pulse">
+                          <span>🍳 Pedido Entregado - Menú Bloqueado (Listo Para Cobrar)</span>
+                        </div>
+                      )}
+
                       <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5">
                         {filteredProducts.length === 0 ? (
                           <div className="text-center py-10 text-gray-500 text-[10px]">
@@ -977,7 +1038,9 @@ export default function AlegraPOSMobileClient() {
                           </div>
                         ) : (
                           filteredProducts.map(p => {
-                            const countInCart = mobileCart.find(item => item.product.id === p.id)?.qty || 0;
+                            const cartItem = mobileCart.find(item => item.product.id === p.id);
+                            const countInCart = cartItem?.qty || 0;
+                            const isItemSent = !!cartItem?.sentToKitchen;
                             return (
                               <div 
                                 key={p.id}
@@ -991,23 +1054,29 @@ export default function AlegraPOSMobileClient() {
                                 {countInCart > 0 ? (
                                   <div className="flex items-center gap-2 bg-indigo-950/40 border border-indigo-900/55 rounded-lg px-1.5 py-0.5 shrink-0">
                                     <button 
-                                      onClick={() => updateCartQty(p.id, -1)}
-                                      className="p-1 text-indigo-400 hover:text-white cursor-pointer"
+                                      onClick={() => !isMobileOrderDelivered && !isItemSent && updateCartQty(p.id, -1)}
+                                      disabled={isMobileOrderDelivered || isItemSent}
+                                      className={`p-1 text-indigo-400 hover:text-white cursor-pointer ${(isMobileOrderDelivered || isItemSent) ? 'opacity-30 cursor-not-allowed' : ''}`}
                                     >
                                       <Minus size={10} />
                                     </button>
-                                    <span className="font-black text-white text-[10px] font-mono">{countInCart}</span>
+                                    <span className="font-black text-white text-[10px] font-mono flex items-center gap-1">
+                                      {countInCart}
+                                      {isItemSent && <span title="Enviado a cocina">🍳</span>}
+                                    </span>
                                     <button 
-                                      onClick={() => updateCartQty(p.id, 1)}
-                                      className="p-1 text-indigo-400 hover:text-white cursor-pointer"
+                                      onClick={() => !isMobileOrderDelivered && !isItemSent && updateCartQty(p.id, 1)}
+                                      disabled={isMobileOrderDelivered || isItemSent}
+                                      className={`p-1 text-indigo-400 hover:text-white cursor-pointer ${(isMobileOrderDelivered || isItemSent) ? 'opacity-30 cursor-not-allowed' : ''}`}
                                     >
                                       <Plus size={10} />
                                     </button>
                                   </div>
                                 ) : (
                                   <button
-                                    onClick={() => addToCart(p)}
-                                    className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg h-6.5 px-2.5 flex items-center justify-center font-bold text-[9px] cursor-pointer transition-all"
+                                    onClick={() => !isMobileOrderDelivered && addToCart(p)}
+                                    disabled={isMobileOrderDelivered}
+                                    className={`bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg h-6.5 px-2.5 flex items-center justify-center font-bold text-[9px] cursor-pointer transition-all ${isMobileOrderDelivered ? 'bg-slate-800 text-gray-500 hover:bg-slate-800 cursor-not-allowed opacity-50' : ''}`}
                                   >
                                     + AÑADIR
                                   </button>
@@ -1033,12 +1102,21 @@ export default function AlegraPOSMobileClient() {
                             >
                               Ver {mobileCart.reduce((sum, i) => sum + i.qty, 0)} items
                             </button>
-                            <button 
-                              onClick={handleSendToKitchen}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-black px-3.5 py-2 rounded-lg cursor-pointer transition-all uppercase flex items-center gap-1.5"
-                            >
-                              <ChefHat size={11} /> Mandar Cocina
-                            </button>
+                            {isMobileOrderDelivered ? (
+                              <button 
+                                onClick={handleProceedToCheckout}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] font-black px-3.5 py-2 rounded-lg cursor-pointer transition-all uppercase flex items-center gap-1.5 shadow-md"
+                              >
+                                <DollarSign size={11} /> Cobrar POS
+                              </button>
+                            ) : (
+                              <button 
+                                onClick={handleSendToKitchen}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-black px-3.5 py-2 rounded-lg cursor-pointer transition-all uppercase flex items-center gap-1.5"
+                              >
+                                <ChefHat size={11} /> Mandar Cocina
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}
@@ -1077,21 +1155,40 @@ export default function AlegraPOSMobileClient() {
                                   <span className="font-extrabold text-white block text-[10.5px] truncate">{item.product.name}</span>
                                   <span className="text-[9px] text-gray-400 font-mono">RD$ {item.product.price} c/u</span>
                                 </div>
-                                <button 
-                                  onClick={() => removeFromCart(item.product.id)}
-                                  className="text-[8px] bg-red-500/10 hover:bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded cursor-pointer"
-                                >
-                                  Quitar
-                                </button>
+                                {item.sentToKitchen ? (
+                                  <div className="text-[8px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase tracking-wider flex items-center gap-0.5">
+                                    <span>🍳 Cocina</span>
+                                  </div>
+                                ) : (
+                                  <button 
+                                    onClick={() => removeFromCart(item.product.id)}
+                                    disabled={isMobileOrderDelivered}
+                                    className={`text-[8px] bg-red-500/10 hover:bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded cursor-pointer ${isMobileOrderDelivered ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                  >
+                                    Quitar
+                                  </button>
+                                )}
                               </div>
 
                               {/* Quantity selection inside cart list */}
                               <div className="flex justify-between items-center pt-1.5 border-t border-slate-850/60">
                                 <div className="text-[9px] text-gray-400">Cantidad:</div>
                                 <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded px-1.5">
-                                  <button onClick={() => updateCartQty(item.product.id, -1)} className="text-gray-400 text-[10.5px] font-bold"><Minus size={9} /></button>
+                                  <button 
+                                    onClick={() => !item.sentToKitchen && !isMobileOrderDelivered && updateCartQty(item.product.id, -1)} 
+                                    disabled={item.sentToKitchen || isMobileOrderDelivered}
+                                    className={`text-gray-400 text-[10.5px] font-bold ${ (item.sentToKitchen || isMobileOrderDelivered) ? 'opacity-30 cursor-not-allowed text-gray-600' : 'cursor-pointer text-indigo-400 hover:text-white'}`}
+                                  >
+                                    <Minus size={9} />
+                                  </button>
                                   <span className="font-mono text-white text-[10px] font-bold">{item.qty}</span>
-                                  <button onClick={() => updateCartQty(item.product.id, 1)} className="text-gray-400 text-[10.5px] font-bold"><Plus size={9} /></button>
+                                  <button 
+                                    onClick={() => !item.sentToKitchen && !isMobileOrderDelivered && updateCartQty(item.product.id, 1)} 
+                                    disabled={item.sentToKitchen || isMobileOrderDelivered}
+                                    className={`text-gray-400 text-[10.5px] font-bold ${ (item.sentToKitchen || isMobileOrderDelivered) ? 'opacity-30 cursor-not-allowed text-gray-600' : 'cursor-pointer text-indigo-400 hover:text-white'}`}
+                                  >
+                                    <Plus size={9} />
+                                  </button>
                                 </div>
                               </div>
 
@@ -1099,10 +1196,11 @@ export default function AlegraPOSMobileClient() {
                               <div>
                                 <input
                                   type="text"
-                                  placeholder="Ej. Término medio, sin aderezo..."
+                                  placeholder={item.sentToKitchen ? "Iniciado en cocina - Notas bloqueadas" : "Ej. Término medio, sin aderezo..."}
                                   value={item.notes}
+                                  disabled={item.sentToKitchen || isMobileOrderDelivered}
                                   onChange={(e) => updateNotes(item.product.id, e.target.value)}
-                                  className="bg-slate-950 border border-slate-850 rounded px-2 py-1 w-full text-[9px] text-gray-300 outline-none focus:border-indigo-650"
+                                  className={`bg-slate-950 border border-slate-850 rounded px-2 py-1 w-full text-[9px] text-gray-300 outline-none focus:border-indigo-650 ${ (item.sentToKitchen || isMobileOrderDelivered) ? 'opacity-50 cursor-not-allowed bg-slate-950/80 text-gray-500' : ''}`}
                                 />
                               </div>
 
@@ -1129,21 +1227,30 @@ export default function AlegraPOSMobileClient() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 text-[10px]">
-                          <button
-                            onClick={handleSendToKitchen}
-                            className="bg-emerald-650 hover:bg-emerald-700 text-white font-black py-2 rounded-xl text-center cursor-pointer uppercase shadow-md flex items-center justify-center gap-1"
-                          >
-                            <ChefHat size={11} /> Mandar Cocina
-                          </button>
-                          
+                        {isMobileOrderDelivered ? (
                           <button
                             onClick={handleProceedToCheckout}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-black py-2 rounded-xl text-center cursor-pointer uppercase shadow-md flex items-center justify-center gap-1"
+                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-2.5 rounded-xl text-center cursor-pointer uppercase shadow-md flex items-center justify-center gap-1.5 text-[11px]"
                           >
-                            <DollarSign size={11} /> Cobrar POS
+                            <DollarSign size={13} /> Cobrar POS (Listo para pagar)
                           </button>
-                        </div>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-2 text-[10px]">
+                            <button
+                              onClick={handleSendToKitchen}
+                              className="bg-emerald-650 hover:bg-emerald-700 text-white font-black py-2 rounded-xl text-center cursor-pointer uppercase shadow-md flex items-center justify-center gap-1"
+                            >
+                              <ChefHat size={11} /> Mandar Cocina
+                            </button>
+                            
+                            <button
+                              onClick={handleProceedToCheckout}
+                              className="bg-indigo-600 hover:bg-indigo-700 text-white font-black py-2 rounded-xl text-center cursor-pointer uppercase shadow-md flex items-center justify-center gap-1"
+                            >
+                              <DollarSign size={11} /> Cobrar POS
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                     </motion.div>

@@ -84,6 +84,7 @@ export interface RestaurantOrderItem {
   notes?: string;
   section?: string;          // E.g. 'Bebidas', 'Platos Fuertes', 'Entradas', etc.
   assignedStation?: string;  // E.g. 'Parrilla', 'Barra', 'Horno', 'Cocina Fría'
+  sentToKitchen?: boolean;
 }
 
 export interface RestaurantOrder {

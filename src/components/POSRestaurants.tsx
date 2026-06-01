@@ -178,8 +178,14 @@ export default function POSRestaurants({
   };
 
   const calculateCartTotals = () => {
-    const subtotal = retailCart.reduce((acc, item) => acc + (item.product.price * item.qty), 0);
-    const taxes = subtotal * 0.18; // ITBIS Dominicana
+    let subtotal = 0;
+    let taxes = 0;
+    retailCart.forEach(item => {
+      const itemSub = item.product.price * item.qty;
+      const rate = item.product.taxRate !== undefined && item.product.taxRate !== null ? item.product.taxRate : 0.18;
+      subtotal += itemSub;
+      taxes += itemSub * rate;
+    });
     const total = subtotal + taxes;
     return { subtotal, taxes, total };
   };
@@ -202,15 +208,18 @@ export default function POSRestaurants({
       clientRnc: currClient.rnc,
       issueDate: new Date().toISOString().split('T')[0],
       dueDate: new Date().toISOString().split('T')[0],
-      items: retailCart.map(item => ({
-        productId: item.product.id,
-        name: item.product.name,
-        quantity: item.qty,
-        unitPrice: item.product.price,
-        discount: 0,
-        taxRate: item.product.taxRate,
-        total: item.product.price * item.qty * 1.18
-      })),
+      items: retailCart.map(item => {
+        const rate = item.product.taxRate !== undefined && item.product.taxRate !== null ? item.product.taxRate : 0.18;
+        return {
+          productId: item.product.id,
+          name: item.product.name,
+          quantity: item.qty,
+          unitPrice: item.product.price,
+          discount: 0,
+          taxRate: rate,
+          total: item.product.price * item.qty * (1 + rate)
+        };
+      }),
       subtotal,
       taxes,
       discount: 0,
@@ -311,6 +320,11 @@ export default function POSRestaurants({
     
     // Check if table has an active order
     const activeOrder = getActiveOrderForTable(selectedTable.id);
+
+    if (activeOrder && activeOrder.status === 'entregada') {
+      alert("La comanda actual de esta mesa ya fue entregada por cocina y está lista para cobrar. No se pueden agregar más platos. Cobre la comanda actual primero.");
+      return;
+    }
     
     if (activeOrder) {
       // Add dish to existing order with matching notes
@@ -326,12 +340,21 @@ export default function POSRestaurants({
           name: prod.name,
           quantity: customQty,
           price: prod.price,
-          notes: customNotes
+          notes: customNotes,
+          sentToKitchen: false
         }];
       }
 
-      const subtotal = updatedItems.reduce((acc, i) => acc + (i.price * i.quantity), 0);
-      const taxes = subtotal * 0.18;
+      // Calculate dynamic subtotal and taxes
+      let subtotal = 0;
+      let taxes = 0;
+      updatedItems.forEach(item => {
+        const itemSub = item.price * item.quantity;
+        const matchingProd = products.find(p => p.id === item.productId || p.name === item.name);
+        const rate = matchingProd && matchingProd.taxRate !== undefined && matchingProd.taxRate !== null ? matchingProd.taxRate : 0.18;
+        subtotal += itemSub;
+        taxes += itemSub * rate;
+      });
       const total = subtotal + taxes;
 
       const updatedOrders = orders.map(o => 
@@ -340,8 +363,9 @@ export default function POSRestaurants({
       onUpdateOrders(updatedOrders);
     } else {
       // Create new order for this table
+      const rate = prod.taxRate !== undefined && prod.taxRate !== null ? prod.taxRate : 0.18;
       const subtotal = prod.price * customQty;
-      const taxes = subtotal * 0.18;
+      const taxes = subtotal * rate;
       const total = subtotal + taxes;
 
       const newOrder: RestaurantOrder = {
@@ -353,7 +377,8 @@ export default function POSRestaurants({
           name: prod.name,
           quantity: customQty,
           price: prod.price,
-          notes: customNotes
+          notes: customNotes,
+          sentToKitchen: false
         }],
         status: 'pendiente',
         subtotal,
@@ -372,6 +397,12 @@ export default function POSRestaurants({
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
 
+    const itemToUpdate = order.items.find((i, idx) => i.productId === prodId && (itemIdx === undefined || idx === itemIdx));
+    if (itemToUpdate && itemToUpdate.sentToKitchen) {
+      alert("No se puede modificar la cantidad de un artículo que ya ha sido enviado a la cocina.");
+      return;
+    }
+
     const updatedItems = order.items.map((i, idx) => {
       if (i.productId === prodId && (itemIdx === undefined || idx === itemIdx)) {
         const newQty = i.quantity + adjust;
@@ -380,8 +411,16 @@ export default function POSRestaurants({
       return i;
     }).filter(Boolean) as any;
 
-    const subtotal = updatedItems.reduce((acc: number, i: any) => acc + (i.price * i.quantity), 0);
-    const taxes = subtotal * 0.18;
+    // Recalculate dynamic subtotal and taxes
+    let subtotal = 0;
+    let taxes = 0;
+    updatedItems.forEach((item: any) => {
+      const itemSub = item.price * item.quantity;
+      const matchingProd = products.find(p => p.id === item.productId || p.name === item.name);
+      const rate = matchingProd && matchingProd.taxRate !== undefined && matchingProd.taxRate !== null ? matchingProd.taxRate : 0.18;
+      subtotal += itemSub;
+      taxes += itemSub * rate;
+    });
     const total = subtotal + taxes;
 
     const updatedOrders = orders.map(o => 
@@ -393,6 +432,12 @@ export default function POSRestaurants({
   const handleModifyItemNotesInOrder = (orderId: string, prodId: string, itemIdx: number, newNotes: string) => {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
+
+    const targetItem = order.items[itemIdx];
+    if (targetItem && targetItem.sentToKitchen) {
+      alert("No se pueden modificar las notas de preparación de un plato que ya ha sido enviado a la cocina.");
+      return;
+    }
 
     const updatedItems = order.items.map((item, idx) => {
       if (item.productId === prodId && idx === itemIdx) {
@@ -412,8 +457,22 @@ export default function POSRestaurants({
     if (!order) return;
 
     let nextStatus: RestaurantOrder['status'] = 'pendiente';
+    let updatedItems = [...order.items];
+
     if (order.status === 'pendiente') {
       nextStatus = 'en_preparacion';
+      // Mark all kitchen articles inside the order as sent!
+      updatedItems = order.items.map(item => {
+        const prod = products.find(p => p.id === item.productId || p.name === item.name);
+        const isKitchen = prod
+          ? ['platos', 'bebidas', 'alimentos', 'cocina', 'comida', 'postres', 'aperitivos'].includes(prod.category.toLowerCase())
+          : !['audifono', 'cargador', 'audífonos', 'termo', 'cable'].some(k => item.name.toLowerCase().includes(k));
+
+        if (isKitchen) {
+          return { ...item, sentToKitchen: true };
+        }
+        return item;
+      });
       if (selectedTable) handleSetTableStatus(selectedTable.id, 'atendiendo');
     } else if (order.status === 'en_preparacion') {
       nextStatus = 'entregada';
@@ -421,7 +480,7 @@ export default function POSRestaurants({
       nextStatus = 'entregada'; // Stay pending checkout
     }
 
-    onUpdateOrders(orders.map(o => o.id === orderId ? { ...o, status: nextStatus } : o));
+    onUpdateOrders(orders.map(o => o.id === orderId ? { ...o, status: nextStatus, items: updatedItems } : o));
   };
 
   // Checkout and emit invoice from Table comanda
@@ -1203,6 +1262,12 @@ export default function POSRestaurants({
             {/* If selected table is active and we are in mapa sub-tab, show the advanced searchable category food selector */}
             {restSubTab === 'mapa' && selectedTable && (
               <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-xs space-y-4">
+                {activeTableOrder?.status === 'entregada' && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center text-amber-900 text-xs font-bold flex items-center justify-center gap-2">
+                    <span>⚠️ La comanda de esta mesa ya fue entregada por cocina y está lista para cobrar. El menú está bloqueado.</span>
+                  </div>
+                )}
+                
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
                   <div>
                     <h3 className="text-xs font-bold text-alegra-secondary uppercase tracking-wider font-display flex items-center gap-1.5">
@@ -1279,10 +1344,10 @@ export default function POSRestaurants({
                               {/* Option A: Quick Add +1 */}
                               <button
                                 type="button"
-                                onClick={() => !isOutOfStock && handleAddDishToTable(p, 1)}
-                                disabled={isOutOfStock}
+                                onClick={() => !isOutOfStock && activeTableOrder?.status !== 'entregada' && handleAddDishToTable(p, 1)}
+                                disabled={isOutOfStock || activeTableOrder?.status === 'entregada'}
                                 className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] px-2 py-1 rounded cursor-pointer disabled:opacity-50"
-                                title="Agregar rápido (+1)"
+                                title={activeTableOrder?.status === 'entregada' ? "Menú bloqueado" : "Agregar rápido (+1)"}
                               >
                                 +1
                               </button>
@@ -1291,15 +1356,15 @@ export default function POSRestaurants({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (isOutOfStock) return;
+                                  if (isOutOfStock || activeTableOrder?.status === 'entregada') return;
                                   setSelectedProdForDetail(p);
                                   setDetailQtyInput(1);
                                   setDetailNotesInput('');
                                   setShowDetailAddModal(true);
                                 }}
-                                disabled={isOutOfStock}
+                                disabled={isOutOfStock || activeTableOrder?.status === 'entregada'}
                                 className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[10px] px-1.5 py-1 rounded cursor-pointer disabled:opacity-50"
-                                title="Agregar con notas/cantidades"
+                                title={activeTableOrder?.status === 'entregada' ? "Menú bloqueado" : "Agregar con notas/cantidades"}
                               >
                                 Detalle
                               </button>
@@ -1489,16 +1554,23 @@ export default function POSRestaurants({
                               )}
                             </div>
                             <div className="flex items-center gap-1.5">
+                              {item.sentToKitchen && (
+                                <span className="text-[9px] bg-amber-500/10 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-0.5 mr-1" title="Ya enviado a preparación. No modificable.">
+                                  🍳 Cocina
+                                </span>
+                              )}
                               <button 
                                 onClick={() => handleUpdateDishQty(activeTableOrder.id, item.productId, -1, itemIdx)}
-                                className="p-0.5 bg-slate-100 hover:bg-slate-200 rounded cursor-pointer"
+                                disabled={item.sentToKitchen}
+                                className={`p-0.5 bg-slate-100 hover:bg-slate-200 rounded cursor-pointer ${item.sentToKitchen ? 'opacity-30 cursor-not-allowed' : ''}`}
                               >
                                 <Minus size={11} />
                               </button>
                               <span className="text-xs font-bold font-mono px-1 w-4 text-center">{item.quantity}</span>
                               <button 
                                 onClick={() => handleUpdateDishQty(activeTableOrder.id, item.productId, 1, itemIdx)}
-                                className="p-0.5 bg-slate-100 hover:bg-slate-200 rounded cursor-pointer"
+                                disabled={item.sentToKitchen}
+                                className={`p-0.5 bg-slate-100 hover:bg-slate-200 rounded cursor-pointer ${item.sentToKitchen ? 'opacity-30 cursor-not-allowed' : ''}`}
                               >
                                 <Plus size={11} />
                               </button>
@@ -1514,7 +1586,7 @@ export default function POSRestaurants({
                           <span className="font-semibold text-gray-900">${activeTableOrder.subtotal.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span>ITBIS 18% / Ley 10%:</span>
+                          <span>ITBIS / Ley 10%:</span>
                           <span className="font-semibold text-gray-900">${activeTableOrder.taxes.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-base font-extrabold text-alegra-primary pt-1 border-t border-gray-100 mt-1">
@@ -1534,14 +1606,20 @@ export default function POSRestaurants({
                 {/* Fixed controls bar for orders */}
                 {activeTableOrder && (
                   <div className="space-y-2 pt-4 border-t border-gray-100 mt-6 text-xs">
-                    <button
-                      onClick={() => handleAdvanceOrderStatus(activeTableOrder.id)}
-                      disabled={activeTableOrder.status === 'entregada'}
-                      className="w-full bg-indigo-600 text-white font-semibold py-2 rounded-lg hover:bg-indigo-700 transition-all flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                      <ChevronRight size={14} />
-                      {activeTableOrder.status === 'pendiente' ? 'Enviar a Preparación (Cocina)' : 'Marcar como Plato Entregado'}
-                    </button>
+                    {(activeTableOrder.status as string) !== 'entregada' ? (
+                      <button
+                        onClick={() => handleAdvanceOrderStatus(activeTableOrder.id)}
+                        disabled={(activeTableOrder.status as string) === 'entregada'}
+                        className="w-full bg-indigo-600 text-white font-semibold py-2 rounded-lg hover:bg-indigo-700 transition-all flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        <ChevronRight size={14} />
+                        {activeTableOrder.status === 'pendiente' ? 'Enviar a Preparación (Cocina)' : 'Marcar como Plato Entregado'}
+                      </button>
+                    ) : (
+                      <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-2.5 text-center text-emerald-800 text-[10px] font-bold mb-2 flex items-center justify-center gap-1">
+                        <span>🎉 ¡Comanda completamente entregada por Cocina! Listo para pagar.</span>
+                      </div>
+                    )}
                     <button
                       onClick={() => handlePayTableOrder(activeTableOrder.id)}
                       className="w-full bg-emerald-600 font-bold text-white py-2.5 rounded-lg hover:bg-emerald-700 transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"

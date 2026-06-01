@@ -1164,6 +1164,13 @@ export default function KitchenKDS({
                   {/* Food checklist items list */}
                   <div className="flex-1 p-3 overflow-y-auto space-y-2 bg-white/70">
                     {order.items.map((item, itemIdx) => {
+                      const prod = products.find(p => p.id === item.productId || p.name === item.name);
+                      const isKitchen = prod
+                        ? ['platos', 'bebidas', 'alimentos', 'cocina', 'comida', 'postres', 'aperitivos'].includes(prod.category.toLowerCase())
+                        : !['audifono', 'cargador', 'audífonos', 'termo', 'cable'].some(k => item.name.toLowerCase().includes(k));
+                      
+                      if (!isKitchen) return null;
+
                       const isItemChecked = !!checkedItems[`${order.id}-${itemIdx}`];
                       return (
                         <div 

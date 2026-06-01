@@ -426,8 +426,8 @@ export default function Invoicing({ invoices, products, clients, onAddInvoice, o
                             <td className="p-2.5 font-medium text-gray-900">{item.name}</td>
                             <td className="p-2.5 text-center font-bold">{item.quantity}</td>
                             <td className="p-2.5 text-right">${item.unitPrice.toFixed(2)}</td>
-                            <td className="p-2.5 text-center">18%</td>
-                            <td className="p-2.5 text-right font-bold">${((item.quantity * item.unitPrice) * 1.18).toFixed(2)}</td>
+                            <td className="p-2.5 text-center">{(item.taxRate * 100).toFixed(0)}%</td>
+                            <td className="p-2.5 text-right font-bold">${((item.quantity * item.unitPrice - item.discount) * (1 + item.taxRate)).toFixed(2)}</td>
                             <td className="p-2.5 text-center">
                               <button
                                 type="button"
@@ -451,8 +451,8 @@ export default function Invoicing({ invoices, products, clients, onAddInvoice, o
                   <span>Subtotal:</span>
                   <span className="text-gray-900">${subtotalDraft.toFixed(2)}</span>
                 </div>
-                <div className="w-72 flex justify-between border-b border-gray-100 pb-1">
-                  <span>Impuestos (ITBIS 18%):</span>
+                <div className="w-72 flex justify-between border-b border-gray-150 pb-1">
+                  <span>Impuestos (ITBIS):</span>
                   <span className="text-gray-900">${taxesDraft.toFixed(2)}</span>
                 </div>
                 <div className="w-72 flex justify-between bg-blue-50/70 border border-blue-100 p-2.5 rounded-lg text-blue-700 text-sm font-bold">
