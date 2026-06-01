@@ -140,6 +140,29 @@ async function fetcher(endpoint: string, method: string, body?: any): Promise<an
       return toCamelCase(data ?? []);
     }
     if (method === 'POST') {
+      if (table === 'orders' && dbBody && dbBody.table_id && typeof dbBody.table_id === 'string' && dbBody.table_id.startsWith('pos-quick-')) {
+        try {
+          const { data: existingTable } = await supabase
+            .from('tables')
+            .select('id')
+            .eq('id', dbBody.table_id)
+            .maybeSingle();
+
+          if (!existingTable) {
+            await supabase
+              .from('tables')
+              .insert([{
+                id: dbBody.table_id,
+                name: dbBody.table_name || `Mostrador ${dbBody.table_id.slice(-4)}`,
+                status: 'ocupada',
+                capacity: 1
+              }]);
+          }
+        } catch (tblErr) {
+          console.warn('Error ensuring quick table exists in web API:', tblErr);
+        }
+      }
+
       const { data, error } = await supabase.from(table).insert([dbBody]).select();
       if (error) throw error;
       return toCamelCase(data?.[0]);

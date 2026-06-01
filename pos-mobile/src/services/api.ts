@@ -242,6 +242,29 @@ export const mobileApi = {
   createOrder: async (order: RestaurantOrder): Promise<RestaurantOrder> => {
     if (isSupabaseActive()) {
       try {
+        if (order.tableId && order.tableId.startsWith('pos-quick-')) {
+          try {
+            const { data: existingTable } = await supabase
+              .from('tables')
+              .select('id')
+              .eq('id', order.tableId)
+              .maybeSingle();
+
+            if (!existingTable) {
+              await supabase
+                .from('tables')
+                .insert([{
+                  id: order.tableId,
+                  name: order.tableName || `Mostrador ${order.tableId.slice(-4)}`,
+                  status: 'ocupada',
+                  capacity: 1
+                }]);
+            }
+          } catch (tblErr) {
+            console.warn('Error ensuring quick table exists in mobile API:', tblErr);
+          }
+        }
+
         const dbBody = toSnakeCase(order);
         const { data, error } = await supabase
           .from('orders')
