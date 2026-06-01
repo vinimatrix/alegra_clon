@@ -8,7 +8,7 @@ import {
   Building2, TrendingUp, FileText, Package, ShoppingBag, Smartphone,
   BookOpen, Database, Menu, X, User, BellRing, Settings as SettingsIcon,
   Users, Receipt, FileBarChart, Coffee, ChefHat,
-  Stethoscope, Calendar, Layers, Grid
+  Stethoscope, Calendar, Layers, Grid, LogOut
 } from 'lucide-react';
 
 import {
@@ -48,11 +48,64 @@ import ActiveModules from './components/ActiveModules';
 import AppointmentsModule from './components/AppointmentsModule';
 import PatientRecordsModule from './components/PatientRecordsModule';
 import ProjectsModule from './components/ProjectsModule';
+import SupabaseAuthGate from './components/SupabaseAuthGate';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Supabase Authentication states
+  const [user, setUser] = useState<any>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [offlineBypass, setOfflineBypass] = useState(() => {
+    return localStorage.getItem('alegra_offline_bypass') === 'true';
+  });
+
+  // Listen for Supabase session and state changes
+  useEffect(() => {
+    if (!isSupabaseActive()) {
+      setUser(null);
+      setCheckingAuth(false);
+      return;
+    }
+
+    setCheckingAuth(true);
+    // Get current session on mount safely
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setCheckingAuth(false);
+    }).catch(err => {
+      console.warn('Error fetching initial auth session:', err);
+      setCheckingAuth(false);
+    });
+
+    // Subscribe to auth events (SIGN_IN, SIGN_OUT, etc.)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log('🔑 [Supabase Auth Event] Evento:', _event, 'Email:', session?.user?.email);
+      setUser(session?.user ?? null);
+      setCheckingAuth(false);
+    });
+
+    return () => {
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    if (isSupabaseActive()) {
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.warn('Error signing out:', e);
+      }
+    }
+    setUser(null);
+    setOfflineBypass(false);
+    localStorage.removeItem('alegra_offline_bypass');
+  };
 
   // Core ERP States with localStorage sync
   const [products, setProducts] = useState<Product[]>(() => getLocalStorageState('alegra_products', INITIAL_PRODUCTS));
@@ -806,6 +859,28 @@ export default function App() {
 
   const currentTabLabel = menuItems.find(item => item.id === activeTab)?.label || 'Alegra';
 
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center font-sans" id="auth-loading-spinner">
+        <div className="w-12 h-12 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin mb-4"></div>
+        <p className="text-xs text-slate-400 font-mono tracking-wider uppercase animate-pulse">Cargando Seguridad Supabase...</p>
+      </div>
+    );
+  }
+
+  if (isSupabaseActive() && !user && !offlineBypass) {
+    return (
+      <SupabaseAuthGate
+        isBackendActive={true}
+        onLoginSuccess={(u) => setUser(u)}
+        onBypassOffline={() => {
+          setOfflineBypass(true);
+          localStorage.setItem('alegra_offline_bypass', 'true');
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-alegra-bg flex flex-col md:flex-row font-sans selection:bg-blue-100 text-gray-800" id="app-wrapper">
       {/* SIDEBAR FOR DESKTOP */}
@@ -844,10 +919,23 @@ export default function App() {
 
         <div className="p-4 border-t border-white/10 text-xs text-white/50 space-y-2 font-mono">
           <div className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-            <span>Base de datos activa: Local</span>
+            <div className={`w-1.5 h-1.5 rounded-full ${isSupabaseActive() ? 'bg-emerald-500' : 'bg-amber-500'} animate-pulse`}></div>
+            <span>Base de datos activa: {isSupabaseActive() ? 'Supabase' : 'Local'}</span>
           </div>
-          <div>vinimatrix@gmail.com</div>
+          <div className="flex items-center justify-between gap-1 group">
+            <span className="truncate max-w-[120px] text-white/80" title={user?.email || 'demo@alegra.com'}>
+              {user?.email || 'demo@alegra.com'}
+            </span>
+            {isSupabaseActive() && (
+              <button 
+                onClick={handleLogout}
+                className="text-white/40 hover:text-red-400 p-1 rounded transition-colors cursor-pointer"
+                title="Cerrar sesión"
+              >
+                <LogOut size={12} />
+              </button>
+            )}
+          </div>
         </div>
       </aside>
 
@@ -893,9 +981,19 @@ export default function App() {
                 </button>
               );
             })}
-            <div className="pt-4 border-t border-white/10 text-xs text-white/50 space-y-1 font-mono px-4">
-              <p>User: vinimatrix@gmail.com</p>
-              <p>Modo: Local / LocalStorage</p>
+            <div className="pt-4 border-t border-white/10 text-xs text-white/50 space-y-2 font-mono px-4 pb-4">
+              <p className="text-white/85">User: {user?.email || 'demo@alegra.com'}</p>
+              <p>Modo: {isSupabaseActive() ? 'Nube Supabase' : 'Local / LocalStorage'}</p>
+              {isSupabaseActive() && (
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="mt-2 w-full py-1.5 bg-red-600/20 hover:bg-red-600/35 border border-red-500/40 text-red-200 rounded font-sans font-bold text-xs flex items-center justify-center gap-1.5 uppercase tracking-wider transition-all cursor-pointer"
+                >
+                  <LogOut size={12} />
+                  <span>Cerrar sesión</span>
+                </button>
+              )}
             </div>
           </nav>
         </div>
@@ -911,14 +1009,27 @@ export default function App() {
               <BellRing className="w-5 h-5" />
               <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500"></span>
             </button>
-            <div className="flex items-center gap-2 border-l border-gray-200 pl-4">
-              <div className="w-8 h-8 rounded-full bg-alegra-primary/10 flex items-center justify-center text-alegra-primary font-bold">
-                V
+            <div className="flex items-center gap-3 border-l border-gray-200 pl-4">
+              <div className="w-8 h-8 rounded-full bg-alegra-primary/10 flex items-center justify-center text-alegra-primary font-bold uppercase">
+                {(user?.email?.[0] || 'V')}
               </div>
               <div className="text-left">
-                <p className="text-xs font-semibold text-gray-700">vinimatrix@gmail.com</p>
-                <p className="text-[10px] text-gray-400 font-mono">Administrador</p>
+                <p className="text-xs font-semibold text-gray-700 max-w-[150px] truncate" title={user?.email || 'demo@alegra.com'}>
+                  {user?.email || 'demo@alegra.com'}
+                </p>
+                <p className="text-[10px] text-gray-400 font-mono">
+                  {isSupabaseActive() ? 'Supabase Admin' : 'Administrador Local'}
+                </p>
               </div>
+              {isSupabaseActive() && (
+                <button
+                  onClick={handleLogout}
+                  className="p-1 px-1.5 ml-1 bg-red-50 hover:bg-red-100/85 text-red-600 rounded-lg transition-all border border-red-200/50 cursor-pointer flex items-center gap-1"
+                  title="Cerrar sesión"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
         </header>
