@@ -5,18 +5,6 @@ export function isSupabaseActive(): boolean {
   return !!(config.use && config.hasValidKeys);
 }
 
-export interface Product {
-  id: string;
-  name: string;
-  price: number;
-  stock: number;
-  sku?: string;
-}
-
-export interface CartItem extends Product {
-  quantity: number;
-}
-
 // Seamlessly convert camelCase to snake_case for Supabase compatibility
 export function toSnakeCase(obj: any): any {
   if (obj === null || obj === undefined) return obj;
@@ -55,18 +43,107 @@ export function toCamelCase(obj: any): any {
   return obj;
 }
 
+export interface Product {
+  id: string;
+  name: string;
+  price: number;
+  stock: number;
+  sku: string;
+  category: string;
+  cost?: number;
+  minStock?: number;
+  taxRate?: number;
+}
+
+export interface CartItem extends Product {
+  quantity: number;
+}
+
+export interface RestaurantTable {
+  id: string;
+  name: string;
+  status: 'libre' | 'ocupada' | 'atendiendo' | 'por_pagar';
+  capacity: number;
+  currentOrderId?: string;
+}
+
+export interface RestaurantOrderItem {
+  productId: string;
+  name: string;
+  quantity: number;
+  price: number;
+  notes?: string;
+}
+
+export interface RestaurantOrder {
+  id: string;
+  tableId: string;
+  tableName: string;
+  items: RestaurantOrderItem[];
+  status: 'pendiente' | 'en_preparacion' | 'entregada' | 'cobrada';
+  subtotal: number;
+  taxes: number;
+  total: number;
+  waiterName?: string;
+  createdAt: string;
+}
+
+export interface JournalEntryLine {
+  accountCode: string;
+  debit: number;
+  credit: number;
+}
+
+export interface JournalEntry {
+  id: string;
+  date: string;
+  description: string;
+  reference?: string;
+  lines: JournalEntryLine[];
+}
+
 export const MOCK_PRODUCTS: Product[] = [
-  { id: 'p-01', name: 'Mofongo con Chicharrón', price: 450.00, stock: 120, sku: 'PROD-MOF-01' },
-  { id: 'p-02', name: 'Pechuga de Pollo a la Plancha', price: 390.00, stock: 95, sku: 'PROD-PECH-02' },
-  { id: 'p-03', name: 'Mofongo de Camarones al Ajillo', price: 650.00, stock: 45, sku: 'PROD-MOF-03' },
-  { id: 'p-04', name: 'Hamburguesa Artesanal "La Criolla"', price: 480.00, stock: 80, sku: 'PROD-HAM-04' },
-  { id: 'p-05', name: 'Cerveza Presidente Grande', price: 230.00, stock: 350, sku: 'PROD-PRES-05' },
-  { id: 'p-06', name: 'Limonada Natural Imperial', price: 125.00, stock: 500, sku: 'PROD-LIM-06' },
-  { id: 'p-07', name: 'Refresco Cola Regular', price: 80.00, stock: 420, sku: 'PROD-COLA-07' },
-  { id: 'p-08', name: 'Audífonos Bluetooth Wireless Pro', price: 1800.00, stock: 24, sku: 'PROD-AUD-08' },
-  { id: 'p-09', name: 'Cargador Rápido USB-C 20W', price: 750.00, stock: 8, sku: 'PROD-CARG-09' },
-  { id: 'p-10', name: 'Termo de Acero Inoxidable 1L', price: 1200.00, stock: 45, sku: 'PROD-TERM-10' },
-  { id: 'p-11', name: 'Café de Especialidad Molido (1lb)', price: 420.00, stock: 68, sku: 'PROD-CAFE-11' }
+  { id: 'p-01', name: 'Mofongo con Chicharrón', price: 450.00, stock: 120, sku: 'PROD-MOF-01', category: 'Platos' },
+  { id: 'p-02', name: 'Pechuga de Pollo a la Plancha', price: 390.00, stock: 95, sku: 'PROD-PECH-02', category: 'Platos' },
+  { id: 'p-03', name: 'Mofongo de Camarones al Ajillo', price: 650.00, stock: 45, sku: 'PROD-MOF-03', category: 'Platos' },
+  { id: 'p-04', name: 'Hamburguesa Artesanal "La Criolla"', price: 480.00, stock: 80, sku: 'PROD-HAM-04', category: 'Platos' },
+  { id: 'p-05', name: 'Cerveza Presidente Grande', price: 230.00, stock: 350, sku: 'PROD-PRES-05', category: 'Bebidas' },
+  { id: 'p-06', name: 'Limonada Natural Imperial', price: 125.00, stock: 500, sku: 'PROD-LIM-06', category: 'Bebidas' },
+  { id: 'p-07', name: 'Refresco Cola Regular', price: 80.00, stock: 420, sku: 'PROD-COLA-07', category: 'Bebidas' },
+  { id: 'p-08', name: 'Audífonos Bluetooth Wireless Pro', price: 1800.00, stock: 24, sku: 'PROD-AUD-08', category: 'Accesorios' },
+  { id: 'p-09', name: 'Cargador Rápido USB-C 20W', price: 750.00, stock: 8, sku: 'PROD-CARG-09', category: 'Accesorios' },
+  { id: 'p-10', name: 'Termo de Acero Inoxidable 1L', price: 1200.00, stock: 45, sku: 'PROD-TERM-10', category: 'Accesorios' },
+  { id: 'p-11', name: 'Café de Especialidad Molido (1lb)', price: 420.00, stock: 68, sku: 'PROD-CAFE-11', category: 'Café' }
+];
+
+export const MOCK_TABLES: RestaurantTable[] = [
+  { id: 't-01', name: 'Mesa 1 (Doble)', status: 'libre', capacity: 2 },
+  { id: 't-02', name: 'Mesa 2 (Familiar)', status: 'ocupada', capacity: 6 },
+  { id: 't-03', name: 'Mesa 3 (Interior)', status: 'atendiendo', capacity: 4 },
+  { id: 't-04', name: 'Mesa 4 (Terraza)', status: 'libre', capacity: 4 },
+  { id: 't-05', name: 'Mesa 5 (Ventanales)', status: 'por_pagar', capacity: 2 },
+  { id: 't-06', name: 'Mesa 6 (Terraza Alta)', status: 'libre', capacity: 2 },
+  { id: 't-07', name: 'Mesa 7 (Bar)', status: 'libre', capacity: 1 },
+  { id: 't-08', name: 'VIP - Salón Ejecutivo', status: 'ocupada', capacity: 10 }
+];
+
+export const MOCK_ORDERS: RestaurantOrder[] = [
+  {
+    id: 'ord-101',
+    tableId: 't-02',
+    tableName: 'Mesa 2 (Familiar)',
+    items: [
+      { productId: 'p-01', name: 'Mofongo con Chicharrón', quantity: 3, price: 450.00 },
+      { productId: 'p-05', name: 'Cerveza Presidente Grande', quantity: 4, price: 230.00, notes: 'Bien frías, tipo ceniza' },
+      { productId: 'p-06', name: 'Limonada Natural Imperial', quantity: 2, price: 125.00 }
+    ],
+    status: 'en_preparacion',
+    subtotal: 2520.00,
+    taxes: 453.60,
+    total: 2973.60,
+    waiterName: 'Andrés Reynoso',
+    createdAt: '15:30'
+  }
 ];
 
 export const mobileApi = {
@@ -88,6 +165,128 @@ export const mobileApi = {
       }
     }
     return MOCK_PRODUCTS;
+  },
+
+  getTables: async (): Promise<RestaurantTable[]> => {
+    if (isSupabaseActive()) {
+      try {
+        const { data, error } = await supabase
+          .from('tables')
+          .select('*')
+          .order('id', { ascending: true });
+        
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          return toCamelCase(data) as RestaurantTable[];
+        } else {
+          // If the DB is empty (first initialize), we can preseed tables to Supabase
+          try {
+            await supabase.from('tables').insert(toSnakeCase(MOCK_TABLES));
+          } catch (seedingErr) {
+            console.warn('Could not seed tables to Supabase:', seedingErr);
+          }
+          return MOCK_TABLES;
+        }
+      } catch (e) {
+        console.warn('Error fetching tables from Supabase, returning mock:', e);
+      }
+    }
+    return MOCK_TABLES;
+  },
+
+  updateTable: async (id: string, tableUpdate: any): Promise<any> => {
+    if (isSupabaseActive()) {
+      try {
+        const dbBody = toSnakeCase(tableUpdate);
+        const { data, error } = await supabase
+          .from('tables')
+          .update(dbBody)
+          .eq('id', id)
+          .select();
+        
+        if (error) throw error;
+        return toCamelCase(data?.[0]);
+      } catch (e) {
+        console.warn(`Error updating table ${id} in Supabase:`, e);
+      }
+    }
+    return null;
+  },
+
+  getOrders: async (): Promise<RestaurantOrder[]> => {
+    if (isSupabaseActive()) {
+      try {
+        const { data, error } = await supabase
+          .from('orders')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        if (data && data.length > 0) {
+          // Clean empty orders or mapping items
+          return toCamelCase(data) as RestaurantOrder[];
+        }
+      } catch (e) {
+        console.warn('Error fetching orders from Supabase:', e);
+      }
+    }
+    return MOCK_ORDERS;
+  },
+
+  createOrder: async (order: RestaurantOrder): Promise<RestaurantOrder> => {
+    if (isSupabaseActive()) {
+      try {
+        const dbBody = toSnakeCase(order);
+        const { data, error } = await supabase
+          .from('orders')
+          .insert([dbBody])
+          .select();
+        
+        if (error) throw error;
+        return toCamelCase(data?.[0]) as RestaurantOrder;
+      } catch (e) {
+        console.warn('Error writing order to Supabase:', e);
+      }
+    }
+    return order;
+  },
+
+  updateOrder: async (id: string, orderUpdate: any): Promise<any> => {
+    if (isSupabaseActive()) {
+      try {
+        const dbBody = toSnakeCase(orderUpdate);
+        const { data, error } = await supabase
+          .from('orders')
+          .update(dbBody)
+          .eq('id', id)
+          .select();
+        
+        if (error) throw error;
+        return toCamelCase(data?.[0]);
+      } catch (e) {
+        console.warn(`Error updating order ${id} in Supabase:`, e);
+      }
+    }
+    return orderUpdate;
+  },
+
+  createJournalEntry: async (entry: JournalEntry): Promise<any> => {
+    if (isSupabaseActive()) {
+      try {
+        const dbBody = toSnakeCase(entry);
+        const { data, error } = await supabase
+          .from('journal_entries')
+          .insert([dbBody])
+          .select();
+        
+        if (error) throw error;
+        return toCamelCase(data?.[0]);
+      } catch (e) {
+        console.warn('Error saving general journal entry in Supabase:', e);
+      }
+    }
+    return entry;
   },
 
   createInvoice: async (cart: CartItem[], totalAmount: number, paymentMethod: string = 'Efectivo'): Promise<any> => {
@@ -142,7 +341,7 @@ export const mobileApi = {
     const invoicePayload = {
       id: 'inv-' + Math.random().toString(36).substr(2, 9),
       invoiceNumber: 'NFC-POS-' + Math.floor(100000 + Math.random() * 900000),
-      clientId: activeClientId, // Dynmically resolved client ID (or null to support constraint bypass)
+      clientId: activeClientId, 
       clientName: activeClientName,
       clientRnc: activeClientRnc,
       issueDate: today,
