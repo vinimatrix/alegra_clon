@@ -73,6 +73,7 @@ export interface RestaurantOrderItem {
   quantity: number;
   price: number;
   notes?: string;
+  sentToKitchen?: boolean;
 }
 
 export interface RestaurantOrder {
@@ -215,6 +216,31 @@ export const mobileApi = {
       } catch (e) {
         console.warn(`Error updating table ${id} in Supabase:`, e);
       }
+    }
+    // Update local mock
+    const tIndex = MOCK_TABLES.findIndex(t => t.id === id);
+    if (tIndex !== -1) {
+      MOCK_TABLES[tIndex] = { ...MOCK_TABLES[tIndex], ...tableUpdate };
+    }
+    return null;
+  },
+
+  deleteTable: async (id: string): Promise<any> => {
+    if (isSupabaseActive()) {
+      try {
+        const { error } = await supabase
+          .from('tables')
+          .delete()
+          .eq('id', id);
+        if (error) throw error;
+      } catch (e) {
+        console.warn(`Error deleting table ${id} in Supabase:`, e);
+      }
+    }
+    // Delete from local mock list
+    const index = MOCK_TABLES.findIndex(t => t.id === id);
+    if (index !== -1) {
+      MOCK_TABLES.splice(index, 1);
     }
     return null;
   },

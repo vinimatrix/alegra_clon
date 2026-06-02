@@ -63,7 +63,7 @@ export default function POSScreen({ onLogout }: { onLogout: () => void }) {
   const [selectedTable, setSelectedTable] = useState<RestaurantTable | null>(null);
 
   // Cart operations
-  const [mobileCart, setMobileCart] = useState<{ product: Product; qty: number; notes: string }[]>([]);
+  const [mobileCart, setMobileCart] = useState<{ product: Product; qty: number; notes: string; sentToKitchen?: boolean }[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todos');
 
@@ -188,7 +188,8 @@ export default function POSScreen({ onLogout }: { onLogout: () => void }) {
         return {
           product: prodMatch,
           qty: item.quantity,
-          notes: item.notes || ''
+          notes: item.notes || '',
+          sentToKitchen: !!item.sentToKitchen
         };
       });
       setMobileCart(cardRecon);
@@ -200,38 +201,59 @@ export default function POSScreen({ onLogout }: { onLogout: () => void }) {
 
   // Catalog operations
   const addToCart = (product: Product) => {
+    if (isMobileOrderDelivered) {
+      Alert.alert('Pedido Entregado', 'La comanda actual ya fue entregada por cocina y está lista para cobrar. El menú está bloqueado.');
+      return;
+    }
     setMobileCart(prev => {
-      const existing = prev.find(item => item.product.id === product.id);
+      const existing = prev.find(item => item.product.id === product.id && !item.sentToKitchen);
       if (existing) {
         return prev.map(item => 
-          item.product.id === product.id ? { ...item, qty: item.qty + 1 } : item
+          (item.product.id === product.id && !item.sentToKitchen) ? { ...item, qty: item.qty + 1 } : item
         );
       }
-      return [...prev, { product, qty: 1, notes: '' }];
+      return [...prev, { product, qty: 1, notes: '', sentToKitchen: false }];
     });
   };
 
-  const updateCartQty = (productId: string, delta: number) => {
+  const updateCartQty = (productId: string, delta: number, sentToKitchen = false) => {
+    if (isMobileOrderDelivered) {
+      Alert.alert('Pedido Entregado', 'La comanda actual ya fue entregada por cocina y está lista para cobrar.');
+      return;
+    }
+    if (sentToKitchen) {
+      Alert.alert('Plato en Preparación', 'Este plato ya fue enviado a cocina y no puede modificarse en cantidad. Si desea más porciones, añada una línea nueva o abra una comanda fresca.');
+      return;
+    }
     setMobileCart(prev => {
       return prev.map(item => {
-        if (item.product.id === productId) {
+        if (item.product.id === productId && !item.sentToKitchen) {
           const newQty = item.qty + delta;
           if (newQty <= 0) return null;
           return { ...item, qty: newQty };
         }
         return item;
-      }).filter(Boolean) as { product: Product; qty: number; notes: string }[];
+      }).filter(Boolean) as { product: Product; qty: number; notes: string; sentToKitchen?: boolean }[];
     });
   };
 
-  const updateNotes = (productId: string, notes: string) => {
+  const updateNotes = (productId: string, notes: string, sentToKitchen = false) => {
+    if (sentToKitchen || isMobileOrderDelivered) return;
     setMobileCart(prev => prev.map(item => 
-      item.product.id === productId ? { ...item, notes } : item
+      (item.product.id === productId && !item.sentToKitchen) ? { ...item, notes } : item
     ));
   };
 
-  const removeFromCart = (productId: string) => {
-    setMobileCart(prev => prev.filter(item => item.product.id !== productId));
+  const removeFromCart = (productId: string, sentToKitchen = false) => {
+    if (isMobileOrderDelivered) {
+      Alert.alert('Pedido Entregado', 'La comanda actual ya fue entregada por cocina y está lista para cobrar.');
+      return;
+    }
+    if (sentToKitchen) {
+      Alert.alert('Plato en Preparación', 'Este plato ya fue mandado a cocina, por lo que no se puede quitar.');
+      return;
+    }
+    setMobileCart(prev => prev.filter(item => !(item.product.id === productId && !item.sentToKitchen)));
   };
 
   // Calculations
@@ -239,26 +261,59 @@ export default function POSScreen({ onLogout }: { onLogout: () => void }) {
   const tax = subtotal * 0.18; // 18% ITBIS
   const total = subtotal + tax;
 
+  const isMobileOrderDelivered = selectedTable 
+    ? (orders.find(o => o.tableId === selectedTable.id && o.status !== 'cobrada')?.status === 'entregada') 
+    : false;
+
   // Process comanda/order to kitchen
   const handleSendToKitchen = async () => {
     if (!selectedTable || mobileCart.length === 0) return;
+
+    if (isMobileOrderDelivered) {
+      Alert.alert('Mesa Lista para Cobro', 'La comanda actual de esta mesa ya fue entregada por cocina y está lista para cobrar. No se pueden enviar más platos.');
+      return;
+    }
 
     setIsLoading(true);
     try {
       const activeOrder = orders.find(o => o.tableId === selectedTable.id && o.status !== 'cobrada');
       
-      const orderItems: RestaurantOrderItem[] = mobileCart.map(item => ({
-        productId: item.product.id,
-        name: item.product.name,
-        quantity: item.qty,
-        price: item.product.price,
-        notes: item.notes || undefined
-      }));
+      if (activeOrder && activeOrder.status === 'entregada') {
+        Alert.alert('Mesa Lista para Cobro', 'La comanda actual de esta mesa ya fue entregada por cocina y está lista para cobrar. No se pueden enviar más platos.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Determine if we are actually sending any new food/drinks to the kitchen
+      let hasNewKitchenItems = false;
+      const orderItems: RestaurantOrderItem[] = mobileCart.map(item => {
+        const isKitchen = ['platos', 'bebidas', 'alimentos', 'cocina', 'comida', 'postres', 'aperitivos'].includes(item.product.category.toLowerCase())
+          && !['audifono', 'cargador', 'audífonos', 'termo', 'cable'].some(k => item.product.name.toLowerCase().includes(k));
+
+        const alreadySent = !!item.sentToKitchen;
+        const shouldSend = isKitchen && !alreadySent;
+
+        if (shouldSend) {
+          hasNewKitchenItems = true;
+        }
+
+        return {
+          productId: item.product.id,
+          name: item.product.name,
+          quantity: item.qty,
+          price: item.product.price,
+          notes: item.notes || undefined,
+          sentToKitchen: alreadySent || shouldSend
+        };
+      });
+
+      const activeStatus = hasNewKitchenItems ? 'en_preparacion' : (activeOrder ? activeOrder.status : 'pendiente');
 
       if (activeOrder) {
         // Update existing order
         const updatedObj = {
           items: orderItems,
+          status: activeStatus,
           subtotal,
           taxes: tax,
           total,
@@ -273,7 +328,7 @@ export default function POSScreen({ onLogout }: { onLogout: () => void }) {
           tableId: selectedTable.id,
           tableName: selectedTable.name,
           items: orderItems,
-          status: 'pendiente',
+          status: activeStatus,
           subtotal,
           taxes: tax,
           total,
@@ -323,7 +378,12 @@ export default function POSScreen({ onLogout }: { onLogout: () => void }) {
 
       // 2. Clear table and mark active order as paid
       await mobileApi.updateOrder(activeOrderObj.id, { status: 'cobrada' });
-      await mobileApi.updateTable(selectedTable.id, { status: 'libre', currentOrderId: null });
+      const isQuickTable = selectedTable.id.startsWith('pos-quick');
+      if (isQuickTable) {
+        await mobileApi.deleteTable(selectedTable.id);
+      } else {
+        await mobileApi.updateTable(selectedTable.id, { status: 'libre', currentOrderId: null });
+      }
 
       // 3. Post Ledger General Accounting Double Entry for Alegra ERP standards
       const accountToDebit = paymentMethod === 'efectivo' ? '1101' : '1103'; // General cash vs. banks
@@ -683,6 +743,12 @@ export default function POSScreen({ onLogout }: { onLogout: () => void }) {
               />
             </View>
 
+            {isMobileOrderDelivered && (
+              <View style={{ marginHorizontal: 16, marginBottom: 8, backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'rgba(245, 158, 11, 0.2)', borderWidth: 1, borderRadius: 8, padding: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: '#f59e0b', fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' }}>🍳 Pedido Entregado - Menú Bloqueado (Listo Para Cobrar)</Text>
+              </View>
+            )}
+
             {/* Horizontal Scroll categories */}
             <View style={styles.categoriesContainer}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesSlider}>
@@ -710,7 +776,9 @@ export default function POSScreen({ onLogout }: { onLogout: () => void }) {
                 data={filteredProducts}
                 keyExtractor={item => item.id}
                 renderItem={({ item }) => {
-                  const qtyCart = mobileCart.find(c => c.product.id === item.id)?.qty || 0;
+                  const cartItemsForProd = mobileCart.filter(c => c.product.id === item.id);
+                  const qtyCart = cartItemsForProd.reduce((acc, c) => acc + c.qty, 0);
+                  const isItemSent = cartItemsForProd.some(c => c.sentToKitchen);
 
                   return (
                     <View style={styles.catalogCell}>
@@ -721,16 +789,30 @@ export default function POSScreen({ onLogout }: { onLogout: () => void }) {
 
                       {qtyCart > 0 ? (
                         <View style={styles.catalogCellActionsGrid}>
-                          <TouchableOpacity onPress={() => updateCartQty(item.id, -1)} style={styles.adjusterBtn}>
+                          <TouchableOpacity 
+                            onPress={() => !isMobileOrderDelivered && !isItemSent && updateCartQty(item.id, -1, isItemSent)} 
+                            disabled={isMobileOrderDelivered || isItemSent}
+                            style={[styles.adjusterBtn, (isMobileOrderDelivered || isItemSent) && { opacity: 0.3 }]}
+                          >
                             <Text style={styles.adjusterBtnText}>-</Text>
                           </TouchableOpacity>
-                          <Text style={styles.adjusterValueText}>{qtyCart}</Text>
-                          <TouchableOpacity onPress={() => updateCartQty(item.id, 1)} style={styles.adjusterBtn}>
+                          <Text style={styles.adjusterValueText}>
+                            {qtyCart} {isItemSent ? "🍳" : ""}
+                          </Text>
+                          <TouchableOpacity 
+                            onPress={() => !isMobileOrderDelivered && !isItemSent && updateCartQty(item.id, 1, isItemSent)} 
+                            disabled={isMobileOrderDelivered || isItemSent}
+                            style={[styles.adjusterBtn, (isMobileOrderDelivered || isItemSent) && { opacity: 0.3 }]}
+                          >
                             <Text style={styles.adjusterBtnText}>+</Text>
                           </TouchableOpacity>
                         </View>
                       ) : (
-                        <TouchableOpacity onPress={() => addToCart(item)} style={styles.addToCartBtn}>
+                        <TouchableOpacity 
+                          onPress={() => !isMobileOrderDelivered && addToCart(item)} 
+                          disabled={isMobileOrderDelivered}
+                          style={[styles.addToCartBtn, isMobileOrderDelivered && { backgroundColor: '#475569', opacity: 0.5 }]}
+                        >
                           <Text style={styles.addToCartBtnLabel}>+ AÑADIR</Text>
                         </TouchableOpacity>
                       )}
@@ -758,9 +840,15 @@ export default function POSScreen({ onLogout }: { onLogout: () => void }) {
                   <TouchableOpacity onPress={() => setActiveScreen('cart')} style={styles.floatShowCartBtn}>
                     <Text style={styles.floatShowCartBtnText}>VER {mobileCart.reduce((sum, i) => sum + i.qty, 0)} ITEMS</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={handleSendToKitchen} style={styles.floatSendKitchenBtn}>
-                    <Text style={styles.floatSendKitchenBtnText}>MANDAR COCINA</Text>
-                  </TouchableOpacity>
+                  {isMobileOrderDelivered ? (
+                    <TouchableOpacity onPress={handleProceedToCheckout} style={[styles.floatSendKitchenBtn, { backgroundColor: '#4f46e5' }]}>
+                      <Text style={styles.floatSendKitchenBtnText}>💵 COBRAR REAL</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity onPress={handleSendToKitchen} style={styles.floatSendKitchenBtn}>
+                      <Text style={styles.floatSendKitchenBtnText}>MANDAR COCINA</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             )}
@@ -778,43 +866,61 @@ export default function POSScreen({ onLogout }: { onLogout: () => void }) {
             </View>
 
             <ScrollView style={styles.modifiersListScroll} contentContainerStyle={styles.modifiersListContainer}>
-              {mobileCart.map(item => (
-                <View key={item.product.id} style={styles.modifierCard}>
-                  <View style={styles.modifierCardLabelRow}>
-                    <View style={styles.flexShrink}>
-                      <Text style={styles.modifierCardName}>{item.product.name}</Text>
-                      <Text style={styles.modifierCardPrice}>RD$ {item.product.price} c/u</Text>
-                    </View>
-                    <TouchableOpacity onPress={() => removeFromCart(item.product.id)} style={styles.modifierCardDeleteBtn}>
-                      <Text style={styles.modifierCardDeleteBtnLabel}>Quitar</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.modifierItemBottomCtrl}>
-                    <Text style={styles.noteLabel}>Cantidad:</Text>
-                    <View style={styles.innerQtyContainer}>
-                      <TouchableOpacity onPress={() => updateCartQty(item.product.id, -1)} style={styles.innerQtyBtn}>
-                        <Text style={styles.innerQtyChar}>-</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.innerQtyVal}>{item.qty}</Text>
-                      <TouchableOpacity onPress={() => updateCartQty(item.product.id, 1)} style={styles.innerQtyBtn}>
-                        <Text style={styles.innerQtyChar}>+</Text>
+              {mobileCart.map((item, index) => {
+                const uniqueKey = `${item.product.id}-${item.sentToKitchen ? 'sent' : 'pending'}-${index}`;
+                return (
+                  <View key={uniqueKey} style={styles.modifierCard}>
+                    <View style={styles.modifierCardLabelRow}>
+                      <View style={styles.flexShrink}>
+                        <Text style={styles.modifierCardName}>{item.product.name}</Text>
+                        <Text style={styles.modifierCardPrice}>RD$ {item.product.price} c/u</Text>
+                      </View>
+                      <TouchableOpacity 
+                        onPress={() => removeFromCart(item.product.id, !!item.sentToKitchen)} 
+                        disabled={isMobileOrderDelivered || !!item.sentToKitchen}
+                        style={[styles.modifierCardDeleteBtn, (isMobileOrderDelivered || !!item.sentToKitchen) && { opacity: 0.3 }]}
+                      >
+                        <Text style={styles.modifierCardDeleteBtnLabel}>Quitar</Text>
                       </TouchableOpacity>
                     </View>
-                  </View>
 
-                  <View style={styles.modifierNoteBlock}>
-                    <Text style={styles.noteLabel}>Instrucciones de Cocina / Notas:</Text>
-                    <TextInput
-                      style={styles.chefNoteInput}
-                      placeholder="Ej. Término medio, sin aderezo, con hielo..."
-                      value={item.notes}
-                      onChangeText={(val) => updateNotes(item.product.id, val)}
-                      placeholderTextColor="#a0aec0"
-                    />
+                    <View style={styles.modifierItemBottomCtrl}>
+                      <Text style={styles.noteLabel}>Cantidad:</Text>
+                      <View style={styles.innerQtyContainer}>
+                        <TouchableOpacity 
+                          onPress={() => updateCartQty(item.product.id, -1, !!item.sentToKitchen)} 
+                          disabled={isMobileOrderDelivered || !!item.sentToKitchen}
+                          style={[styles.innerQtyBtn, (isMobileOrderDelivered || !!item.sentToKitchen) && { opacity: 0.3 }]}
+                        >
+                          <Text style={styles.innerQtyChar}>-</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.innerQtyVal}>{item.qty} {item.sentToKitchen ? "🍳" : ""}</Text>
+                        <TouchableOpacity 
+                          onPress={() => updateCartQty(item.product.id, 1, !!item.sentToKitchen)} 
+                          disabled={isMobileOrderDelivered || !!item.sentToKitchen}
+                          style={[styles.innerQtyBtn, (isMobileOrderDelivered || !!item.sentToKitchen) && { opacity: 0.3 }]}
+                        >
+                          <Text style={styles.innerQtyChar}>+</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    <View style={styles.modifierNoteBlock}>
+                      <Text style={styles.noteLabel}>
+                        {item.sentToKitchen ? "Instrucciones de Cocina (Mándada / Bloqueada):" : "Instrucciones de Cocina / Notas:"}
+                      </Text>
+                      <TextInput
+                        style={[styles.chefNoteInput, (item.sentToKitchen || isMobileOrderDelivered) && { opacity: 0.5, backgroundColor: '#1e293b' }]}
+                        placeholder={item.sentToKitchen ? "Iniciado en cocina - Notas bloqueadas" : "Ej. Término medio, sin aderezo..."}
+                        value={item.notes}
+                        disabled={!!item.sentToKitchen || isMobileOrderDelivered}
+                        onChangeText={(val) => updateNotes(item.product.id, val, !!item.sentToKitchen)}
+                        placeholderTextColor="#a0aec0"
+                      />
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </ScrollView>
 
             {/* Calculations summaries */}
@@ -833,12 +939,20 @@ export default function POSScreen({ onLogout }: { onLogout: () => void }) {
               </View>
 
               <View style={styles.submitCartActionsRow}>
-                <TouchableOpacity onPress={handleSendToKitchen} style={styles.submitKitchenBtn}>
-                  <Text style={styles.submitKitchenBtnLabel}>👩‍🍳 ENVIAR COCINA</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleProceedToCheckout} style={styles.submitCashierBtn}>
-                  <Text style={styles.submitCashierBtnLabel}>💵 COBRAR POS</Text>
-                </TouchableOpacity>
+                {isMobileOrderDelivered ? (
+                  <TouchableOpacity onPress={handleProceedToCheckout} style={[styles.submitCashierBtn, { flex: 1 }]}>
+                    <Text style={styles.submitCashierBtnLabel}>💵 COBRAR POS (LISTO PARA PAGAR)</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <>
+                    <TouchableOpacity onPress={handleSendToKitchen} style={styles.submitKitchenBtn}>
+                      <Text style={styles.submitKitchenBtnLabel}>👩‍🍳 ENVIAR COCINA</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleProceedToCheckout} style={styles.submitCashierBtn}>
+                      <Text style={styles.submitCashierBtnLabel}>💵 COBRAR POS</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
             </View>
           </View>

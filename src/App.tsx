@@ -801,12 +801,20 @@ export default function App() {
   };
 
   const handleUpdateTables = (updatedTables: any[]) => {
-    setTables(updatedTables);
     if (isSupabaseActive()) {
+      // Find deleted tables (specifically those starting with 'pos-quick')
+      const deletedQuickTables = tables.filter(
+        t => t.id.startsWith('pos-quick') && !updatedTables.some(ut => ut.id === t.id)
+      );
+      for (const t of deletedQuickTables) {
+        api.deleteTable(t.id).catch(e => console.warn('Error deleting quick table:', e));
+      }
+
       for (const t of updatedTables) {
         api.updateTable(t.id, t).catch(e => console.warn('Error updating table:', e));
       }
     }
+    setTables(updatedTables);
   };
 
   const handleUpdateOrders = (updatedOrders: any[]) => {

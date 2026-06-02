@@ -390,12 +390,15 @@ export default function POSMobileSimulator({
     };
     const updatedOrdersList = orders.map(o => o.id === activeOrderForTable.id ? updatedOrder : o);
 
-    // 2. Free up the table
-    const updatedTablesList = tables.map(t => 
-      t.id === selectedTable.id 
-        ? { ...t, status: 'libre' as const, currentOrderId: undefined } 
-        : t
-    );
+    // 2. Free up or remove table if it's a quick counter (mostrador) table
+    const isQuickTable = selectedTable.id.startsWith('pos-quick');
+    const updatedTablesList = isQuickTable
+      ? tables.filter(t => t.id !== selectedTable.id)
+      : tables.map(t => 
+          t.id === selectedTable.id 
+            ? { ...t, status: 'libre' as const, currentOrderId: undefined } 
+            : t
+        );
 
     // 3. Post Automatic Accounting Entry to match Alegra ERP standards
     // Debit active cash or banks, credit Restaurant Sales matching accounts

@@ -65,6 +65,7 @@ export const api = {
   // TABLES (Mesas)
   getTables: async () => fetcher('tables', 'GET'),
   updateTable: async (id: string, table: any) => fetcher(`tables/${id}`, 'PUT', table),
+  deleteTable: async (id: string) => fetcher(`tables/${id}`, 'DELETE'),
 
   // ORDERS (Comandas)
   getOrders: async () => fetcher('orders', 'GET'),

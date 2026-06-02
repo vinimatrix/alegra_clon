@@ -241,10 +241,18 @@ export default function POSRestaurants({
   };
 
   const handleSetTableStatus = (tableId: string, status: RestaurantTable['status']) => {
-    const updated = tables.map(t => t.id === tableId ? { ...t, status } : t);
+    const isQuickTable = tableId.startsWith('pos-quick');
+    const updated = isQuickTable
+      ? tables.filter(t => t.id !== tableId)
+      : tables.map(t => t.id === tableId ? { ...t, status } : t);
+      
     onUpdateTables(updated);
     if (selectedTable && selectedTable.id === tableId) {
-      setSelectedTable({ ...selectedTable, status });
+      if (isQuickTable) {
+        setSelectedTable(null);
+      } else {
+        setSelectedTable({ ...selectedTable, status });
+      }
     }
   };
 
