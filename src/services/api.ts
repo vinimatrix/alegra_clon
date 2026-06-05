@@ -133,12 +133,24 @@ async function fetcher(endpoint: string, method: string, body?: any): Promise<an
     if ((table === 'tables' || table === 'restaurant_tables') && dbBody) {
       delete dbBody.current_order_id;
     }
+    if (table === 'orders' && dbBody) {
+      if (dbBody.status === 'cobrada') {
+        dbBody.status = 'cancelada';
+      }
+    }
     
     // ── SUPABASE MODE ──────────────────────────────────────────
     if (method === 'GET') {
       const { data, error } = await supabase.from(table).select('*').order(table === 'accounts' ? 'code' : 'created_at', { ascending: false });
       if (error) throw error;
-      return toCamelCase(data ?? []);
+      let camelData = toCamelCase(data ?? []);
+      if (table === 'tables') {
+        camelData = (camelData as any[]).filter((t: any) => !t.id.startsWith('pos-quick'));
+      }
+      if (table === 'orders') {
+        camelData = (camelData as any[]).map((o: any) => o.status === 'cancelada' ? { ...o, status: 'cobrada' } : o);
+      }
+      return camelData;
     }
     if (method === 'POST') {
       if (table === 'orders' && dbBody && dbBody.table_id && typeof dbBody.table_id === 'string' && dbBody.table_id.startsWith('pos-quick-')) {
@@ -166,12 +178,20 @@ async function fetcher(endpoint: string, method: string, body?: any): Promise<an
 
       const { data, error } = await supabase.from(table).insert([dbBody]).select();
       if (error) throw error;
-      return toCamelCase(data?.[0]);
+      const camelResult = toCamelCase(data?.[0]);
+      if (table === 'orders' && camelResult && camelResult.status === 'cancelada') {
+        (camelResult as any).status = 'cobrada';
+      }
+      return camelResult;
     }
     if (method === 'PUT' && idPath) {
       const { data, error } = await supabase.from(table).update(dbBody).eq(keyCol, idPath).select();
       if (error) throw error;
-      return toCamelCase(data?.[0]);
+      const camelResult = toCamelCase(data?.[0]);
+      if (table === 'orders' && camelResult && camelResult.status === 'cancelada') {
+        (camelResult as any).status = 'cobrada';
+      }
+      return camelResult;
     }
     if (method === 'DELETE' && idPath) {
       const { error } = await supabase.from(table).delete().eq(keyCol, idPath);

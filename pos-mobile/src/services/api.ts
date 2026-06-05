@@ -179,7 +179,8 @@ export const mobileApi = {
         if (error) throw error;
         
         if (data && data.length > 0) {
-          return toCamelCase(data) as RestaurantTable[];
+          const camelTables = toCamelCase(data) as RestaurantTable[];
+          return camelTables.filter(t => !t.id.startsWith('pos-quick'));
         } else {
           // If the DB is empty (first initialize), we can preseed tables to Supabase
           try {
@@ -187,13 +188,13 @@ export const mobileApi = {
           } catch (seedingErr) {
             console.warn('Could not seed tables to Supabase:', seedingErr);
           }
-          return MOCK_TABLES;
+          return MOCK_TABLES.filter(t => !t.id.startsWith('pos-quick'));
         }
       } catch (e) {
         console.warn('Error fetching tables from Supabase, returning mock:', e);
       }
     }
-    return MOCK_TABLES;
+    return MOCK_TABLES.filter(t => !t.id.startsWith('pos-quick'));
   },
 
   updateTable: async (id: string, tableUpdate: any): Promise<any> => {
@@ -226,6 +227,10 @@ export const mobileApi = {
   },
 
   deleteTable: async (id: string): Promise<any> => {
+    if (id.startsWith('pos-quick')) {
+      // Avoid deleting from database to maintain foreign key referential integrity
+      return null;
+    }
     if (isSupabaseActive()) {
       try {
         const { error } = await supabase
@@ -256,7 +261,8 @@ export const mobileApi = {
         if (error) throw error;
         if (data && data.length > 0) {
           // Clean empty orders or mapping items
-          return toCamelCase(data) as RestaurantOrder[];
+          const camelOrders = toCamelCase(data) as RestaurantOrder[];
+          return camelOrders.map(o => o.status === 'cancelada' ? { ...o, status: 'cobrada' } : o);
         }
       } catch (e) {
         console.warn('Error fetching orders from Supabase:', e);
@@ -291,14 +297,23 @@ export const mobileApi = {
           }
         }
 
-        const dbBody = toSnakeCase(order);
+        const mappedOrder = { ...order };
+        if (mappedOrder.status === 'cobrada') {
+          mappedOrder.status = 'cancelada';
+        }
+
+        const dbBody = toSnakeCase(mappedOrder);
         const { data, error } = await supabase
           .from('orders')
           .insert([dbBody])
           .select();
         
         if (error) throw error;
-        return toCamelCase(data?.[0]) as RestaurantOrder;
+        const camelResult = toCamelCase(data?.[0]) as RestaurantOrder;
+        if (camelResult && camelResult.status === 'cancelada') {
+          camelResult.status = 'cobrada';
+        }
+        return camelResult;
       } catch (e) {
         console.warn('Error writing order to Supabase:', e);
       }
@@ -309,7 +324,12 @@ export const mobileApi = {
   updateOrder: async (id: string, orderUpdate: any): Promise<any> => {
     if (isSupabaseActive()) {
       try {
-        const dbBody = toSnakeCase(orderUpdate);
+        const mappedUpdate = { ...orderUpdate };
+        if (mappedUpdate.status === 'cobrada') {
+          mappedUpdate.status = 'cancelada';
+        }
+
+        const dbBody = toSnakeCase(mappedUpdate);
         const { data, error } = await supabase
           .from('orders')
           .update(dbBody)
@@ -317,7 +337,11 @@ export const mobileApi = {
           .select();
         
         if (error) throw error;
-        return toCamelCase(data?.[0]);
+        const camelResult = toCamelCase(data?.[0]);
+        if (camelResult && camelResult.status === 'cancelada') {
+          camelResult.status = 'cobrada';
+        }
+        return camelResult;
       } catch (e) {
         console.warn(`Error updating order ${id} in Supabase:`, e);
       }

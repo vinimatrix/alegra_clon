@@ -227,7 +227,8 @@ export default function App() {
           console.log('⚡ [Realtime Supabase] Evento de Orden:', payload);
           
           if (payload.eventType === 'INSERT') {
-            const newOrder = toCamelCase(payload.new);
+            const rawOrder = toCamelCase(payload.new);
+            const newOrder = rawOrder.status === 'cancelada' ? { ...rawOrder, status: 'cobrada' } : rawOrder;
             setOrders((prev) => {
               const exists = prev.some((o) => o.id === newOrder.id);
               if (exists) return prev;
@@ -247,7 +248,8 @@ export default function App() {
               return [newOrder, ...prev];
             });
           } else if (payload.eventType === 'UPDATE') {
-            const updatedOrder = toCamelCase(payload.new);
+            const rawOrder = toCamelCase(payload.new);
+            const updatedOrder = rawOrder.status === 'cancelada' ? { ...rawOrder, status: 'cobrada' } : rawOrder;
             setOrders((prev) =>
               prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o))
             );
@@ -268,6 +270,9 @@ export default function App() {
           console.log('⚡ [Realtime Supabase] Evento de Mesa:', payload);
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const tableItem = toCamelCase(payload.new);
+            if (tableItem.id.startsWith('pos-quick')) {
+              return;
+            }
             setTables((prev) => {
               const exists = prev.some((t) => t.id === tableItem.id);
               if (exists) {
@@ -802,14 +807,6 @@ export default function App() {
 
   const handleUpdateTables = (updatedTables: any[]) => {
     if (isSupabaseActive()) {
-      // Find deleted tables (specifically those starting with 'pos-quick')
-      const deletedQuickTables = tables.filter(
-        t => t.id.startsWith('pos-quick') && !updatedTables.some(ut => ut.id === t.id)
-      );
-      for (const t of deletedQuickTables) {
-        api.deleteTable(t.id).catch(e => console.warn('Error deleting quick table:', e));
-      }
-
       for (const t of updatedTables) {
         api.updateTable(t.id, t).catch(e => console.warn('Error updating table:', e));
       }
